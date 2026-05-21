@@ -28,10 +28,25 @@ export default function Dashboard() {
   const [syncingGitHub, setSyncingGitHub] = useState(false);
   const [syncingLeetCode, setSyncingLeetCode] = useState(false);
   const [syncMessage, setSyncMessage] = useState('');
+  const [autoFetching, setAutoFetching] = useState(true);
 
   useEffect(() => {
     async function fetchData() {
       try {
+        // Auto-fetch all today's data first
+        setAutoFetching(true);
+        setSyncMessage('Auto-fetching today\'s data from all sources...');
+        try {
+          await api.fetchAllToday();
+          setSyncMessage('Successfully fetched GitHub, LeetCode, and extension data!');
+          setTimeout(() => setSyncMessage(''), 4000);
+        } catch (err) {
+          console.warn('Auto-fetch skipped or failed (may be first run):', err.message);
+          setSyncMessage('');
+        }
+        setAutoFetching(false);
+
+        // Load dashboard data
         const [todayRes, dueRes, statsRes, statusRes] = await Promise.all([
           api.searchToday(),
           api.getDueTopics().catch(() => ({ topics: [] })),

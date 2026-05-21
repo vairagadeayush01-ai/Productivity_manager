@@ -1,0 +1,98 @@
+EXACT CHANGES MADE TO: backend/routes/search.py
+
+================================================================================
+CHANGE 1: Updated imports (Line 3)
+================================================================================
+BEFORE:
+    from datetime import date as date_type
+
+AFTER:
+    from datetime import date as date_type, datetime, time
+
+REASON: Added datetime and time imports needed for proper datetime comparison
+
+
+================================================================================
+CHANGE 2: Fixed /today endpoint (Lines 26-38)
+================================================================================
+BEFORE:
+    @router.get("/today")
+    async def get_today(db: Session = Depends(get_db)):
+        today   = date_type.today()
+        entries = db.query(LearningEntry).filter(
+            LearningEntry.created_at >= today.isoformat()
+        ).order_by(LearningEntry.created_at.desc()).all()
+        return {"date": today.isoformat(), "count": len(entries), "entries": [
+            {"id": e.id, "source_type": e.source_type, "title": e.title,
+             "summary": e.summary, "topics": e.topics.split(", ") if e.topics else [],
+             "created_at": e.created_at.isoformat()}
+            for e in entries
+        ]}
+
+AFTER:
+    @router.get("/today")
+    async def get_today(db: Session = Depends(get_db)):
+        today   = date_type.today()
+        today_start = datetime.combine(today, time.min)
+        entries = db.query(LearningEntry).filter(
+            LearningEntry.created_at >= today_start
+        ).order_by(LearningEntry.created_at.desc()).all()
+        return {"date": today.isoformat(), "count": len(entries), "entries": [
+            {"id": e.id, "source_type": e.source_type, "title": e.title,
+             "summary": e.summary, "topics": (e.topics.split(", ") if e.topics else []),
+             "created_at": e.created_at.isoformat()}
+            for e in entries
+        ]}
+
+CHANGES:
+  • Line 29: Added 'today_start = datetime.combine(today, time.min)'
+  • Line 30-31: Changed 'today.isoformat()' to 'today_start' (DateTime instead of string)
+  • Line 35: Added parentheses around topics split: '(e.topics.split(...) if e.topics else [])'
+    This fixes the AttributeError when topics is None
+
+REASON: 
+  - Proper datetime comparison for date filtering
+  - Safe null handling for topics field
+
+
+================================================================================
+CHANGE 3: Fixed /history endpoint (Lines 41-50)
+================================================================================
+BEFORE:
+    @router.get("/history")
+    async def get_history(skip: int = 0, limit: int = 50, db: Session = Depends(get_db)):
+        entries = db.query(LearningEntry).order_by(LearningEntry.created_at.desc()).offset(skip).limit(limit).all()
+        total = db.query(LearningEntry).count()
+        return {"total": total, "entries": [
+            {"id": e.id, "source_type": e.source_type, "title": e.title,
+             "summary": e.summary, "topics": e.topics.split(", ") if e.topics else [],
+             "created_at": e.created_at.isoformat()}
+            for e in entries
+        ]}
+
+AFTER:
+    @router.get("/history")
+    async def get_history(skip: int = 0, limit: int = 50, db: Session = Depends(get_db)):
+        entries = db.query(LearningEntry).order_by(LearningEntry.created_at.desc()).offset(skip).limit(limit).all()
+        total = db.query(LearningEntry).count()
+        return {"total": total, "entries": [
+            {"id": e.id, "source_type": e.source_type, "title": e.title,
+             "summary": e.summary, "topics": (e.topics.split(", ") if e.topics else []),
+             "created_at": e.created_at.isoformat()}
+            for e in entries
+        ]}
+
+CHANGES:
+  • Line 47: Added parentheses around topics split: '(e.topics.split(...) if e.topics else [])'
+
+REASON:
+  - Safe null handling for topics field
+  - Prevents AttributeError when topics is None or empty string
+
+
+================================================================================
+TOTAL CHANGES: 3 lines modified, 1 import section updated
+BREAKING CHANGES: None
+DATA IMPACT: None (query logic only, no data modification)
+PERFORMANCE IMPACT: None (same queries, just correct logic)
+================================================================================

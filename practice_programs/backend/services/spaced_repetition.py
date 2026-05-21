@@ -68,3 +68,18 @@ def get_all_topics(db: Session) -> list[dict]:
             "times_incorrect": row.times_incorrect,
         })
     return result
+
+
+def get_topic_performance(db: Session) -> float:
+    """Calculate overall performance score (0.0 to 1.0) based on quiz results.
+    Returns: 0.0 = all wrong, 1.0 = all correct"""
+    all_topics = db.query(TopicReview).all()
+    if not all_topics:
+        return 0.5
+    
+    total_correct = sum(t.times_correct for t in all_topics)
+    total_attempted = sum(t.times_correct + t.times_incorrect for t in all_topics)
+    
+    if total_attempted == 0:
+        return 0.5
+    return total_correct / total_attempted

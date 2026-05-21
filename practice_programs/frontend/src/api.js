@@ -71,6 +71,10 @@ export const api = {
   syncLeetCode: async () => {
     const res = await axios.post(`${API_BASE}/fetch/leetcode`);
     return res.data;
+  },
+  fetchAllToday: async () => {
+    const res = await axios.post(`${API_BASE}/fetch/all-today`);
+    return res.data;
   }
 };
 

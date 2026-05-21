@@ -6,7 +6,8 @@ var EDU_CHANNELS = [
   "abdul bari","take u forward","striver","3blue1brown","khan academy",
   "mit opencourseware","nptel","veritasium","numberphile",
   "andrej karpathy","yannic kilcher","two minute papers","sentdex",
-  "statquest with josh starmer","crashcourse","ted-ed","lesics"
+  "statquest with josh starmer","crashcourse","ted-ed","lesics",
+  "campusx","coder army","chai aur code","engineering funda","codestorywithmik"
 ];
 
 var EDU_KEYWORDS = [
@@ -192,98 +193,158 @@ function showBadge(isEdu, confidence, meta) {
   var pct        = Math.round(confidence * 100);
   var scoreColor = confidence > 0.6 ? "#22c55e" : confidence > 0.3 ? "#f59e0b" : "#ef4444";
   var tracking   = isEdu;
+  var isExpanded = false;
 
   var div = document.createElement("div");
   div.id  = "ytai-badge";
   div.setAttribute("style",
     "position:fixed !important;" +
-    "top:68px !important;" +
-    "left:0 !important;" +
-    "right:0 !important;" +
+    "top:80px !important;" +
+    "right:20px !important;" +
     "z-index:99999 !important;" +
-    "display:flex !important;" +
-    "justify-content:center !important;" +
-    "pointer-events:none !important;"
+    "pointer-events:none !important;" +
+    "font-family:Roboto,Arial,sans-serif !important;"
   );
 
   div.innerHTML =
-    '<div id="ytai-inner" style="' +
+    '<div id="ytai-circle-container" style="' +
+      'position:relative !important;' +
+      'width:40px !important;height:40px !important;' +
       'pointer-events:all !important;' +
-      'display:flex !important;' +
-      'align-items:center !important;' +
-      'justify-content:space-between !important;' +
-      'padding:10px 20px !important;' +
-      'border-radius:12px !important;' +
-      'border:1.5px solid ' + (isEdu ? "rgba(34,197,94,0.5)" : "rgba(150,150,150,0.4)") + ' !important;' +
-      'background:' + (isEdu ? "rgba(20,20,20,0.92)" : "rgba(30,30,30,0.92)") + ' !important;' +
-      'backdrop-filter:blur(8px) !important;' +
-      'font-family:Roboto,Arial,sans-serif !important;' +
-      'min-width:500px !important;' +
-      'max-width:700px !important;' +
-      'box-shadow:0 4px 20px rgba(0,0,0,0.4) !important;' +
+      'cursor:pointer !important;' +
     '">' +
-      '<div style="display:flex !important;align-items:center !important;gap:12px !important;">' +
-        '<span style="font-size:22px !important;">' + (isEdu ? "🎓" : "📺") + '</span>' +
-        '<div>' +
-          '<div style="font-size:13px !important;font-weight:600 !important;color:#ffffff !important;margin-bottom:2px !important;">' +
-            (isEdu ? "Educational Video Detected" : "Not Educational") +
+      '<div id="ytai-circle" style="' +
+        'position:absolute !important;' +
+        'width:40px !important;height:40px !important;' +
+        'border-radius:50% !important;' +
+        'background:' + (isEdu ? "rgba(34,197,94,0.9)" : "rgba(100,100,100,0.9)") + ' !important;' +
+        'border:2px solid ' + (isEdu ? "rgba(34,197,94,1)" : "rgba(150,150,150,1)") + ' !important;' +
+        'display:flex !important;' +
+        'align-items:center !important;' +
+        'justify-content:center !important;' +
+        'font-size:20px !important;' +
+        'backdrop-filter:blur(8px) !important;' +
+        'box-shadow:0 4px 12px rgba(0,0,0,0.3) !important;' +
+        'transition:all 0.3s ease !important;' +
+        'z-index:1 !important;' +
+      '">' +
+        (isEdu ? "🎓" : "📺") +
+      '</div>' +
+      '<div id="ytai-expanded-badge" style="' +
+        'position:absolute !important;' +
+        'top:0 !important;right:0 !important;' +
+        'display:none !important;' +
+        'flex-direction:column !important;' +
+        'gap:12px !important;' +
+        'padding:15px !important;' +
+        'border-radius:16px !important;' +
+        'border:1.5px solid ' + (isEdu ? "rgba(34,197,94,0.6)" : "rgba(150,150,150,0.4)") + ' !important;' +
+        'background:' + (isEdu ? "rgba(20,20,20,0.95)" : "rgba(30,30,30,0.95)") + ' !important;' +
+        'backdrop-filter:blur(12px) !important;' +
+        'width:320px !important;' +
+        'box-shadow:0 8px 32px rgba(0,0,0,0.5) !important;' +
+        'z-index:2 !important;' +
+        'animation:slideIn 0.3s ease !important;' +
+      '">' +
+        '<div style="display:flex !important;align-items:center !important;justify-content:space-between !important;">' +
+          '<div style="display:flex !important;align-items:center !important;gap:10px !important;">' +
+            '<span style="font-size:24px !important;">' + (isEdu ? "🎓" : "📺") + '</span>' +
+            '<div>' +
+              '<div style="font-size:12px !important;font-weight:600 !important;color:#ffffff !important;">' +
+                (isEdu ? "Educational" : "Not Educational") +
+              '</div>' +
+              '<div style="font-size:10px !important;color:#aaaaaa !important;">' +
+                'Confidence: <b style="color:' + scoreColor + ' !important;">' + pct + '%</b>' +
+              '</div>' +
+            '</div>' +
           '</div>' +
-          '<div style="font-size:11px !important;color:#aaaaaa !important;">' +
-            'Confidence: <b style="color:' + scoreColor + ' !important;">' + pct + '%</b>' +
-            '&nbsp;&nbsp;|&nbsp;&nbsp;' +
-            '<b style="color:#ffffff !important;">' + (meta.channel || "Unknown Channel") + '</b>' +
-            '&nbsp;&nbsp;|&nbsp;&nbsp;Duration: ' +
-            '<b style="color:#ffffff !important;">' + meta.duration + '</b>' +
+          '<button id="ytai-close-btn" style="' +
+            'background:none !important;border:none !important;color:#aaaaaa !important;' +
+            'font-size:18px !important;cursor:pointer !important;padding:0 !important;' +
+            'transition:color 0.2s !important;' +
+          '">✕</button>' +
+        '</div>' +
+        '<div style="border-top:1px solid rgba(255,255,255,0.1) !important;padding-top:8px !important;">' +
+          '<div style="font-size:11px !important;color:#aaaaaa !important;line-height:1.4 !important;">' +
+            '<div><b style="color:#ffffff !important;">Channel:</b> ' + (meta.channel || "Unknown") + '</div>' +
+            '<div><b style="color:#ffffff !important;">Duration:</b> ' + meta.duration + '</div>' +
+            '<div style="margin-top:6px !important;"><b style="color:#ffffff !important;">Title:</b></div>' +
+            '<div style="color:#cccccc !important;font-size:10px !important;margin-top:2px !important;">' + 
+              meta.title.substring(0, 50) + (meta.title.length > 50 ? "..." : "") + 
+            '</div>' +
+          '</div>' +
+        '</div>' +
+        '<div style="display:flex !important;align-items:center !important;justify-content:space-between !important;border-top:1px solid rgba(255,255,255,0.1) !important;padding-top:10px !important;">' +
+          '<span id="ytai-lbl" style="font-size:11px !important;color:#aaaaaa !important;font-weight:500 !important;">' +
+            (isEdu ? "Tracking ON" : "Tracking OFF") +
+          '</span>' +
+          '<div id="ytai-toggle" style="' +
+            'width:44px !important;height:22px !important;' +
+            'border-radius:11px !important;' +
+            'background:' + (isEdu ? "#22c55e" : "#555") + ' !important;' +
+            'cursor:pointer !important;position:relative !important;' +
+            'transition:background 0.3s !important;flex-shrink:0 !important;' +
+          '">' +
+            '<div id="ytai-knob" style="' +
+              'width:16px !important;height:16px !important;' +
+              'border-radius:50% !important;background:white !important;' +
+              'position:absolute !important;top:3px !important;' +
+              'left:' + (isEdu ? "25px" : "3px") + ' !important;' +
+              'transition:left 0.3s !important;' +
+            '"></div>' +
           '</div>' +
         '</div>' +
       '</div>' +
-      '<div style="display:flex !important;align-items:center !important;gap:10px !important;">' +
-        '<span id="ytai-lbl" style="font-size:12px !important;color:#aaaaaa !important;">' +
-          (isEdu ? "Tracking ON" : "Tracking OFF") +
-        '</span>' +
-        '<div id="ytai-btn" style="' +
-          'width:44px !important;height:24px !important;' +
-          'border-radius:12px !important;' +
-          'background:' + (isEdu ? "#22c55e" : "#555") + ' !important;' +
-          'cursor:pointer !important;position:relative !important;' +
-          'transition:background 0.3s !important;flex-shrink:0 !important;' +
-        '">' +
-          '<div id="ytai-knob" style="' +
-            'width:18px !important;height:18px !important;' +
-            'border-radius:50% !important;background:white !important;' +
-            'position:absolute !important;top:3px !important;' +
-            'left:' + (isEdu ? "23px" : "3px") + ' !important;' +
-            'transition:left 0.3s !important;' +
-          '"></div>' +
-        '</div>' +
-      '</div>' +
-    '</div>';
+    '</div>' +
+    '<style>' +
+      '@keyframes slideIn {' +
+        'from { opacity:0; transform:translateY(-10px) !important; }' +
+        'to { opacity:1; transform:translateY(0) !important; }' +
+      '}' +
+      '#ytai-close-btn:hover { color:#ffffff !important; }' +
+      '#ytai-circle:hover { transform:scale(1.1) !important; }' +
+    '</style>';
 
   document.documentElement.appendChild(div);
-  console.log("[YT-AI] Badge injected — fixed position");
+  console.log("[YT-AI] Collapsible badge injected");
 
-  // Auto hide after 6 seconds, show on hover
-  setTimeout(function() {
-    var inner = document.getElementById("ytai-inner");
-    if (inner) {
-      inner.style.opacity = "0.15";
-      inner.style.transition = "opacity 0.4s";
-      inner.addEventListener("mouseenter", function() { inner.style.opacity = "1"; });
-      inner.addEventListener("mouseleave", function() { inner.style.opacity = "0.15"; });
-    }
-  }, 6000);
-
-  // Toggle handler
-  var btn  = document.getElementById("ytai-btn");
+  var circle = document.getElementById("ytai-circle");
+  var expanded = document.getElementById("ytai-expanded-badge");
+  var container = document.getElementById("ytai-circle-container");
+  var closeBtn = document.getElementById("ytai-close-btn");
+  var toggle = document.getElementById("ytai-toggle");
   var knob = document.getElementById("ytai-knob");
-  var lbl  = document.getElementById("ytai-lbl");
+  var lbl = document.getElementById("ytai-lbl");
 
-  if (btn) {
-    btn.addEventListener("click", function() {
+  function toggleExpanded() {
+    isExpanded = !isExpanded;
+    if (isExpanded) {
+      expanded.style.display = "flex";
+      circle.style.opacity = "0.3";
+    } else {
+      expanded.style.display = "none";
+      circle.style.opacity = "1";
+    }
+  }
+
+  if (circle) {
+    circle.addEventListener("click", toggleExpanded);
+  }
+
+  if (closeBtn) {
+    closeBtn.addEventListener("click", function(e) {
+      e.stopPropagation();
+      toggleExpanded();
+    });
+  }
+
+  if (toggle) {
+    toggle.addEventListener("click", function(e) {
+      e.stopPropagation();
       tracking = !tracking;
-      btn.style.background  = tracking ? "#22c55e" : "#555";
-      knob.style.left       = tracking ? "23px" : "3px";
-      lbl.textContent       = tracking ? "Tracking ON" : "Tracking OFF";
+      toggle.style.background = tracking ? "#22c55e" : "#555";
+      knob.style.left = tracking ? "25px" : "3px";
+      lbl.textContent = tracking ? "Tracking ON" : "Tracking OFF";
       setUserOverride(meta.videoId, tracking);
 
       if (tracking) {
@@ -296,6 +357,21 @@ function showBadge(isEdu, confidence, meta) {
       console.log("[YT-AI] Tracking toggled:", tracking);
     });
   }
+
+  // Auto-collapse after 5 seconds if expanded
+  container.addEventListener("mouseenter", function() {
+    if (!isExpanded) {
+      circle.style.opacity = "1";
+    }
+  });
+
+  container.addEventListener("mouseleave", function() {
+    setTimeout(function() {
+      if (isExpanded) {
+        toggleExpanded();
+      }
+    }, 4000);
+  });
 }
 
 // ── MAIN ──────────────────────────────────────────────────

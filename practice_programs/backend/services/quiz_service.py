@@ -30,8 +30,8 @@ def _parse_json_list(text: str) -> list:
         return []
 
 
-def generate_quiz(entries: list[dict], n_questions: int = 7) -> list[dict]:
-    """Generates MCQs from today's learning entries."""
+def generate_quiz(entries: list[dict], n_questions: int = 20, difficulty: str = "medium") -> list[dict]:
+    """Generates MCQs from today's learning entries with difficulty level."""
     if not entries:
         return []
 
@@ -41,6 +41,12 @@ def generate_quiz(entries: list[dict], n_questions: int = 7) -> list[dict]:
         context += f"   Summary: {e.get('summary','')}\n"
         context += f"   Topics: {e.get('topics','')}\n"
 
+    difficulty_guide = {
+        "easy": "Generate mostly foundational and definition-based questions. Focus on recall.",
+        "medium": "Mix basic recall with understanding questions. Include some application-level questions.",
+        "hard": "Focus on critical thinking, application, and analysis. Include scenario-based and complex questions."
+    }
+
     prompt = f"""You are a quiz generator for a student's personal learning tracker.
 
 The student learned the following today:
@@ -48,12 +54,15 @@ The student learned the following today:
 
 Generate exactly {n_questions} multiple choice questions to help them revise.
 
+Difficulty Level: {difficulty.upper()}
+{difficulty_guide.get(difficulty, difficulty_guide['medium'])}
+
 Rules:
 - Base questions ONLY on the content above
 - Each question has exactly 4 options
 - One correct answer only
-- Mix easy and medium difficulty
 - Cover different topics
+- Ensure good coverage of all materials
 
 Return ONLY a valid JSON array (no markdown, no backticks):
 [
@@ -62,7 +71,8 @@ Return ONLY a valid JSON array (no markdown, no backticks):
     "options": ["A", "B", "C", "D"],
     "answer": "correct option text",
     "explanation": "one sentence explanation",
-    "topic": "topic name"
+    "topic": "topic name",
+    "difficulty": "{difficulty}"
   }}
 ]"""
 

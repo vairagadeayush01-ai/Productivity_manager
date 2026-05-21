@@ -32,12 +32,28 @@ async def get_today_quiz(db: Session = Depends(get_db)):
          "summary": e.summary, "topics": e.topics}
         for e in entries
     ]
-    questions = quiz_service.generate_quiz(entry_dicts, n_questions=7)
+    
+    # Calculate difficulty based on performance
+    difficulty = "medium"
+    difficulty_score = spaced_repetition.get_topic_performance(db)
+    if difficulty_score < 0.3:
+        difficulty = "easy"
+    elif difficulty_score > 0.7:
+        difficulty = "hard"
+    
+    # Generate min 20 questions (or based on data available)
+    n_questions = max(20, len(entries) * 3)
+    questions = quiz_service.generate_quiz(entry_dicts, n_questions=n_questions, difficulty=difficulty)
 
     if not questions:
         raise HTTPException(502, "Could not generate quiz. Try again.")
 
-    return {"date": today.isoformat(), "questions": questions, "total": len(questions)}
+    return {
+        "date": today.isoformat(), 
+        "questions": questions, 
+        "total": len(questions),
+        "difficulty": difficulty
+    }
 
 
 @router.get("/review/{topic}")

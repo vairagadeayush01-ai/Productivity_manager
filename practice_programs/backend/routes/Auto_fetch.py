@@ -74,6 +74,50 @@ async def fetch_leetcode(db: Session = Depends(get_db)):
             "problems": data["problems"], "entry": entry}
 
 
+@router.post("/all-today")
+async def fetch_all_today(db: Session = Depends(get_db)):
+    """Fetches ALL today's data: GitHub, LeetCode, and extension metadata in one call."""
+    results = {
+        "github": {"status": "pending", "entry": None, "message": ""},
+        "leetcode": {"status": "pending", "entry": None, "message": ""},
+        "timestamp": date.today().isoformat()
+    }
+    
+    # Fetch GitHub activity
+    try:
+        data = fetch_today_activity()
+        if data["total_commits"] == 0 and not data["new_repos"]:
+            results["github"]["message"] = "No GitHub activity today"
+            results["github"]["status"] = "no_data"
+        else:
+            title = f"GitHub — {data['total_commits']} commit(s) in {len(data['repos_touched'])} repo(s)"
+            entry = _store(db, "github", title, data["summary_text"], f"https://github.com/{data['username']}")
+            results["github"]["entry"] = entry
+            results["github"]["message"] = f"Saved {data['total_commits']} commits"
+            results["github"]["status"] = "success"
+    except Exception as e:
+        results["github"]["status"] = "error"
+        results["github"]["message"] = str(e)
+    
+    # Fetch LeetCode activity
+    try:
+        data = fetch_today_submissions()
+        if data["total_solved"] == 0:
+            results["leetcode"]["message"] = "No LeetCode problems solved today"
+            results["leetcode"]["status"] = "no_data"
+        else:
+            title = f"LeetCode — {data['total_solved']} problem(s) solved"
+            entry = _store(db, "leetcode", title, data["summary_text"], f"https://leetcode.com/{data['username']}")
+            results["leetcode"]["entry"] = entry
+            results["leetcode"]["message"] = f"Saved {data['total_solved']} problems"
+            results["leetcode"]["status"] = "success"
+    except Exception as e:
+        results["leetcode"]["status"] = "error"
+        results["leetcode"]["message"] = str(e)
+    
+    return results
+
+
 @router.get("/status")
 async def fetch_status():
     import os
