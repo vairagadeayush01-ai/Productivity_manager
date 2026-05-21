@@ -55,6 +55,14 @@ class Streak(Base):
     entry_count  = Column(Integer, default=0)
 
 
+class DailyDiary(Base):
+    __tablename__ = "daily_diaries"
+    id           = Column(Integer, primary_key=True, index=True)
+    date         = Column(Date, unique=True, index=True)
+    summary      = Column(Text)
+    created_at   = Column(DateTime, default=datetime.utcnow)
+
+
 def init_db():
     Base.metadata.create_all(bind=engine)
 

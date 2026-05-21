@@ -6,6 +6,7 @@ import Quiz from './pages/Quiz';
 import SemanticSearch from './pages/Search';
 import HistoryFeed from './pages/History';
 import Report from './pages/Report';
+import DiaryReader from './pages/DiaryReader';
 import IngestModal from './components/IngestModal';
 import './index.css';
 
@@ -71,21 +72,31 @@ function Navbar() {
   );
 }
 
+function AppWrapper() {
+  const location = useLocation();
+  const isDiary = location.pathname.startsWith('/diary/');
+
+  return (
+    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+      {!isDiary && <Navbar />}
+      <main className={isDiary ? "" : "app-container"} style={{ flex: 1, padding: isDiary ? '0' : '0 2rem 4rem' }}>
+        <Routes>
+          <Route path="/" element={<Dashboard />} />
+          <Route path="/search" element={<SemanticSearch />} />
+          <Route path="/quiz" element={<Quiz />} />
+          <Route path="/history" element={<HistoryFeed />} />
+          <Route path="/diary/:date" element={<DiaryReader />} />
+          <Route path="/report" element={<Report />} />
+        </Routes>
+      </main>
+    </div>
+  );
+}
+
 function App() {
   return (
     <BrowserRouter>
-      <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
-        <Navbar />
-        <main className="app-container" style={{ flex: 1, padding: '0 2rem 4rem' }}>
-          <Routes>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/search" element={<SemanticSearch />} />
-            <Route path="/quiz" element={<Quiz />} />
-            <Route path="/history" element={<HistoryFeed />} />
-            <Route path="/report" element={<Report />} />
-          </Routes>
-        </main>
-      </div>
+      <AppWrapper />
     </BrowserRouter>
   );
 }

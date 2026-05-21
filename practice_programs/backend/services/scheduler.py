@@ -176,6 +176,22 @@ def _daily_leetcode_job():
         db.close()
 
 
+def _daily_diary_job():
+    """Generates the daily diary entry at the end of the day."""
+    print("[Scheduler] Generating daily diary...")
+    db = SessionLocal()
+    try:
+        from routes.diary import generate_diary_for_date
+        from datetime import date
+        today_str = date.today().isoformat()
+        generate_diary_for_date(db, today_str)
+        print("[Scheduler] Daily diary generated successfully.")
+    except Exception as e:
+        print(f"[Scheduler] Daily diary job failed: {e}")
+    finally:
+        db.close()
+
+
 def start_scheduler():
     scheduler = BackgroundScheduler()
 
@@ -219,6 +235,13 @@ def start_scheduler():
         _daily_leetcode_job,
         CronTrigger(hour=23, minute=30),
         id="daily_leetcode", replace_existing=True
+    )
+    
+    # Daily diary at 11:45 PM (23:45)
+    scheduler.add_job(
+        _daily_diary_job,
+        CronTrigger(hour=23, minute=45),
+        id="daily_diary", replace_existing=True
     )
 
     scheduler.start()

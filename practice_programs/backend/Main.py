@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from database import init_db
-from routes import ingest, search, reader, quiz, report
+from routes import ingest, search, reader, quiz, report, diary
 from routes.Auto_fetch import router as auto_fetch_router
 from services.scheduler import start_scheduler
 
@@ -24,6 +24,7 @@ app.include_router(reader.router)
 app.include_router(auto_fetch_router)
 app.include_router(quiz.router)
 app.include_router(report.router)
+app.include_router(diary.router)
 
 
 @app.on_event("startup")

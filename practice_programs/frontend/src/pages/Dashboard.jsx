@@ -48,7 +48,29 @@ export default function Dashboard() {
         setLoading(false);
       }
     }
-    fetchData();
+
+    async function autoSyncToday() {
+      // Silently fire all-today fetch in the background on page open
+      try {
+        const result = await api.fetchAllToday();
+        // If anything was saved, refresh the dashboard data
+        const anyNew = Object.values(result.results || {}).some(r => r.status === 'ok');
+        if (anyNew) {
+          const [todayRes, statsRes] = await Promise.all([
+            api.searchToday(),
+            api.getStats().catch(() => null)
+          ]);
+          setData(todayRes);
+          setStats(statsRes);
+          setSyncMessage('? Auto-synced today\'s GitHub & LeetCode activity');
+          setTimeout(() => setSyncMessage(''), 5000);
+        }
+      } catch {
+        // Silently ignore - integrations may not be configured
+      }
+    }
+
+    fetchData().then(() => autoSyncToday());
   }, []);
 
   const handleSync = async (type) => {
@@ -329,9 +351,17 @@ export default function Dashboard() {
               {entry.source_type === 'youtube' && (
                 <div style={{ 
                   width: '160px', height: '90px', borderRadius: '8px', 
-                  background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center' 
+                  background: 'rgba(0,0,0,0.5)', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' 
                 }}>
-                   <span style={{ fontSize: '2rem' }}>▶️</span>
+                   {entry.source_url ? (
+                     <img 
+                       src={`https://img.youtube.com/vi/${entry.source_url.split('v=')[1]?.split('&')[0] || entry.source_url.split('/').pop()}/mqdefault.jpg`} 
+                       alt="Thumbnail" 
+                       style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                     />
+                   ) : (
+                     <Video color="rgba(255,255,255,0.2)" size={32} />
+                   )}
                 </div>
               )}
               <div style={{ flex: 1 }}>

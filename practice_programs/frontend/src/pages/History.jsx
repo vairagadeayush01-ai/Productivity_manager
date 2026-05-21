@@ -1,94 +1,123 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { api } from '../api';
-import { History as HistoryIcon, ChevronRight, ChevronLeft } from 'lucide-react';
+import { Book, ChevronRight, Database } from 'lucide-react';
 
 export default function History() {
-  const [entries, setEntries] = useState([]);
+  const [diaries, setDiaries] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [page, setPage] = useState(0);
-  const [total, setTotal] = useState(0);
-  const limit = 20;
+  const [error, setError]     = useState(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
-    async function loadHistory() {
+    async function loadDiaries() {
       setLoading(true);
+      setError(null);
       try {
-        const data = await api.getAllHistory(page * limit, limit);
-        setEntries(data.entries);
-        setTotal(data.total);
+        const data = await api.getDiaries();
+        setDiaries(data.diaries || []);
       } catch (err) {
         console.error(err);
+        setError('Failed to load diary history. Make sure the backend is running.');
       } finally {
         setLoading(false);
       }
     }
-    loadHistory();
-  }, [page]);
+    loadDiaries();
+  }, []);
 
   return (
     <div className="animate-fade-in" style={{ maxWidth: '900px', margin: '0 auto' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '2rem' }}>
         <div style={{ padding: '1rem', background: 'rgba(99, 102, 241, 0.2)', borderRadius: '12px' }}>
-          <HistoryIcon color="var(--primary-glow)" size={28} />
+          <Book color="var(--primary-glow)" size={28} />
         </div>
         <div>
-          <h1 style={{ fontSize: '2rem' }}>All-Time History</h1>
-          <p style={{ color: 'var(--text-muted)' }}>Chronological feed of everything you've learned.</p>
+          <h1 style={{ fontSize: '2rem' }}>Learning Diary</h1>
+          <p style={{ color: 'var(--text-muted)' }}>
+            {diaries.length > 0
+              ? `Your daily journal of ${diaries.length} days of learning.`
+              : "Your daily learning journal."}
+          </p>
         </div>
       </div>
 
-      {loading ? (
-        <div style={{ textAlign: 'center', padding: '3rem' }}>Loading history...</div>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-          {entries.map((entry, idx) => (
-            <div key={entry.id || idx} className="glass-card" style={{ padding: '1.5rem', display: 'flex', gap: '1.5rem', alignItems: 'flex-start' }}>
-              <div style={{ flex: 1 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                  <span style={{ fontSize: '0.75rem', padding: '2px 8px', borderRadius: '4px', background: 'rgba(255,255,255,0.1)', textTransform: 'uppercase' }}>
-                    {entry.source_type}
-                  </span>
-                  <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                    {new Date(entry.created_at).toLocaleDateString()}
-                  </span>
-                </div>
-                <h3 style={{ marginBottom: '0.5rem', fontSize: '1.2rem' }}>{entry.title}</h3>
-                <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem', marginBottom: '1rem', lineHeight: 1.6 }}>
-                  {entry.summary || "Pending Summary..."}
-                </p>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-                  {(entry.topics || []).map((t, i) => (
-                    <span key={i} style={{ fontSize: '0.8rem', padding: '4px 10px', borderRadius: '12px', background: 'rgba(99, 102, 241, 0.15)', color: '#c7d2fe' }}>
-                      #{String(t).trim()}
-                    </span>
-                  ))}
+      {loading && (
+        <div style={{ textAlign: 'center', padding: '4rem' }}>
+          <div style={{
+            width: '48px', height: '48px',
+            border: '3px solid rgba(99,102,241,0.2)',
+            borderTopColor: 'var(--primary-glow)', borderRadius: '50%',
+            margin: '0 auto 1rem', animation: 'spin 1s linear infinite'
+          }} />
+          <p style={{ color: 'var(--text-muted)' }}>Opening diary...</p>
+        </div>
+      )}
+
+      {error && !loading && (
+        <div style={{
+          padding: '1.5rem', borderRadius: '12px',
+          background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)',
+          color: '#fca5a5', textAlign: 'center'
+        }}>
+          {error}
+        </div>
+      )}
+
+      {!loading && !error && diaries.length === 0 && (
+        <div className="glass-card" style={{ padding: '4rem', textAlign: 'center' }}>
+          <Database size={52} color="var(--text-muted)" style={{ margin: '0 auto 1.25rem' }} />
+          <h2 style={{ marginBottom: '0.75rem', fontSize: '1.4rem' }}>No diary entries yet</h2>
+          <p style={{ color: 'var(--text-muted)', maxWidth: '400px', margin: '0 auto' }}>
+            Start learning! Your activities will automatically be summarized into a daily diary entry at the end of the day.
+          </p>
+        </div>
+      )}
+
+      {!loading && !error && diaries.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+          {diaries.map((diary) => {
+            const dateObj = new Date(diary.date);
+            const dateString = dateObj.toLocaleDateString(undefined, {
+              weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+            });
+
+            return (
+              <div 
+                key={diary.id} 
+                className="glass-card" 
+                style={{ 
+                  overflow: 'hidden', 
+                  transition: 'transform 0.2s, background 0.2s',
+                  cursor: 'pointer'
+                }}
+                onClick={() => navigate(`/diary/${diary.date}`)}
+                onMouseOver={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
+                onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}
+              >
+                <div style={{
+                  width: '100%',
+                  padding: '1.5rem 2rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  color: 'var(--text-main)',
+                }}>
+                  <div>
+                    <h3 style={{ fontSize: '1.2rem', fontWeight: 500, color: 'var(--text-main)' }}>
+                      {dateString}
+                    </h3>
+                    <p style={{ color: 'var(--text-muted)', marginTop: '0.25rem', fontSize: '0.9rem' }}>
+                      Read Diary Entry
+                    </p>
+                  </div>
+                  <div>
+                    <ChevronRight size={24} color="var(--primary-glow)" />
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
-
-          {/* Pagination */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '2rem' }}>
-            <button 
-              className="btn-secondary" 
-              disabled={page === 0} 
-              onClick={() => setPage(p => p - 1)}
-              style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
-            >
-              <ChevronLeft size={16} /> Previous
-            </button>
-            <span style={{ color: 'var(--text-muted)' }}>
-              Page {page + 1} of {Math.ceil(total / limit)}
-            </span>
-            <button 
-              className="btn-secondary" 
-              disabled={(page + 1) * limit >= total} 
-              onClick={() => setPage(p => p + 1)}
-              style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
-            >
-              Next <ChevronRight size={16} />
-            </button>
-          </div>
+            );
+          })}
         </div>
       )}
     </div>

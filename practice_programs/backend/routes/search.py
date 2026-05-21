@@ -8,7 +8,7 @@ router = APIRouter(prefix="/search", tags=["search"])
 
 
 @router.get("/")
-async def search_entries(q: str = Query(...), n: int = Query(5, ge=1, le=20)):
+async def search_entries(q: str = Query(...), n: int = Query(5, ge=1, le=30)):
     results = vector_store.search(query=q, n_results=n)
     if not results:
         return {"query": q, "results": [], "message": "Nothing found yet."}
@@ -32,6 +32,7 @@ async def get_today(db: Session = Depends(get_db)):
     return {"date": today.isoformat(), "count": len(entries), "entries": [
         {"id": e.id, "source_type": e.source_type, "title": e.title,
          "summary": e.summary, "topics": e.topics.split(", ") if e.topics else [],
+         "source_url": e.source_url,
          "created_at": e.created_at.isoformat()}
         for e in entries
     ]}
@@ -44,6 +45,7 @@ async def get_history(skip: int = 0, limit: int = 50, db: Session = Depends(get_
     return {"total": total, "entries": [
         {"id": e.id, "source_type": e.source_type, "title": e.title,
          "summary": e.summary, "topics": e.topics.split(", ") if e.topics else [],
+         "source_url": e.source_url,
          "created_at": e.created_at.isoformat()}
         for e in entries
     ]}

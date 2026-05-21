@@ -1,34 +1,39 @@
-console.log("YTAI content script loaded");
+// ── Config ────────────────────────────────────────────────
+// Change this if your backend runs on a different port
+var BACKEND_URL = "http://localhost:8000";
 
 var EDU_CHANNELS = [
-  "freecodecamp.org","traversy media","the coding train","fireship",
-  "kunal kushwaha","apna college","codewithharry","jenny's lectures cs it",
-  "abdul bari","take u forward","striver","3blue1brown","khan academy",
-  "mit opencourseware","nptel","veritasium","numberphile",
-  "andrej karpathy","yannic kilcher","two minute papers","sentdex",
-  "statquest with josh starmer","crashcourse","ted-ed","lesics"
+  // Global channels
+  "freecodecamp.org", "traversy media", "the coding train", "fireship",
+  "kunal kushwaha", "apna college", "codewithharry", "jenny's lectures cs it",
+  "abdul bari", "striver", "3blue1brown", "khan academy",
+  "mit opencourseware", "nptel", "veritasium", "numberphile",
+  "andrej karpathy", "yannic kilcher", "two minute papers", "sentdex",
+  "statquest with josh starmer", "crashcourse", "ted-ed", "lesics",
+  // Requested Indian channels
+  "campusx", "take u forward", "codestorywithmik", "coder army",
+  "chai aur code", "engineering funda"
 ];
 
 var EDU_KEYWORDS = [
-  "lecture","tutorial","course","lesson","explained","explanation",
-  "learn","crash course","beginners","full course","masterclass",
-  "bootcamp","chapter","how to","introduction to","intro to",
-  "deep dive","dsa","data structures","algorithms","coding",
-  "programming","python","javascript","java","c++","react","sql",
-  "database","operating system","computer networks","dbms","oops",
-  "object oriented","system design","leetcode","interview prep",
-  "placement","machine learning","deep learning","neural network",
-  "artificial intelligence","nlp","computer vision","signal processing",
-  "dsp","fourier","convolution","transformer","llm","mathematics",
-  "calculus","linear algebra","statistics","probability","physics",
-  "chemistry","biology","theorem","proof","gate","upsc","revision",
-  "exam","mcq","practice","series","part 1","part 2","episode"
+  "lecture", "tutorial", "course", "lesson", "explained", "explanation",
+  "learn", "crash course", "beginners", "full course", "masterclass",
+  "bootcamp", "chapter", "how to", "introduction to", "intro to",
+  "deep dive", "dsa", "data structures", "algorithms", "coding",
+  "programming", "python", "javascript", "java", "c++", "react", "sql",
+  "database", "operating system", "computer networks", "dbms", "oops",
+  "object oriented", "system design", "leetcode", "interview prep",
+  "placement", "machine learning", "deep learning", "neural network",
+  "artificial intelligence", "nlp", "computer vision", "signal processing",
+  "dsp", "fourier", "convolution", "transformer", "llm", "mathematics",
+  "calculus", "linear algebra", "statistics", "probability", "physics",
+  "chemistry", "biology", "theorem", "proof", "gate", "upsc", "revision",
+  "exam", "mcq", "practice", "series", "part 1", "part 2", "episode"
 ];
 
 // ── Detection ──────────────────────────────────────────────
 function checkChannel(name) {
-  if (!name) return false;
-  return EDU_CHANNELS.indexOf(name.toLowerCase().trim()) !== -1;
+  return EDU_CHANNELS.indexOf((name || "").toLowerCase().trim()) !== -1;
 }
 
 function checkKeywords(title) {
@@ -36,7 +41,7 @@ function checkKeywords(title) {
   return EDU_KEYWORDS.filter(function(k) { return lower.indexOf(k) !== -1; });
 }
 
-// ── Storage ────────────────────────────────────────────────
+// ── Storage helpers ────────────────────────────────────────
 function getUserOverride(videoId, cb) {
   chrome.storage.local.get(["override_" + videoId], function(r) {
     var v = r["override_" + videoId];
@@ -50,265 +55,387 @@ function setUserOverride(videoId, val) {
   chrome.storage.local.set(o);
 }
 
-// ── SAVE VIDEO METADATA ────────────────────────────────────
-function saveVideoMetadata(meta, isEdu, confidence) {
-  // Get existing video list
-  chrome.storage.local.get(["ytai_videos"], function(result) {
-    var videos = result.ytai_videos || {};
-
-    var isNew = !videos[meta.videoId];
-    
-    // Save/update this video's data
-    videos[meta.videoId] = {
-      videoId:      meta.videoId,
-      title:        meta.title,
-      channel:      meta.channel,
-      duration:     meta.duration,
-      thumbnail:    meta.thumbnail,
-      isEducational: isEdu,
-      confidence:   Math.round(confidence * 100),
-      watchTime:    videos[meta.videoId] ? videos[meta.videoId].watchTime : 0,
-      completion:   videos[meta.videoId] ? videos[meta.videoId].completion : 0,
-      firstSeen:    videos[meta.videoId]
-                    ? videos[meta.videoId].firstSeen
-                    : new Date().toISOString(),
-      lastWatched:  new Date().toISOString(),
-      rewatchCount: videos[meta.videoId]
-                    ? (videos[meta.videoId].rewatchCount || 0) + 1
-                    : 1
-    };
-
-    videos[meta.videoId] = { ...videos[meta.videoId], ...meta };
-      
-    chrome.storage.local.set({ ytai_videos: videos }, function() {
-      if (isEdu) {
-         // Sync immediately on first open, and then every 30 seconds of watch time
-         if (isNew || (videos[meta.videoId].watchTime % 30 === 0)) {
-             syncWithBackend(meta.videoId);
-         }
-      }
+// ── Send to backend ────────────────────────────────────────
+function sendToBackend(meta) {
+  var sentKey = "sent_" + meta.videoId;
+  chrome.storage.local.get([sentKey], function(result) {
+    if (result[sentKey]) {
+      console.log("[YT-AI] Already sent:", meta.title);
+      return;
+    }
+    var videoUrl = "https://www.youtube.com/watch?v=" + meta.videoId;
+    fetch(BACKEND_URL + "/ingest/youtube", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url: videoUrl })
+    })
+    .then(function(r) {
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      return r.json();
+    })
+    .then(function() {
+      var o = {};
+      o[sentKey] = true;
+      chrome.storage.local.set(o);
+      showStatusToast("✓ Summary saved to your learning tracker");
+    })
+    .catch(function(err) {
+      console.warn("[YT-AI] Backend error:", err.message);
+      showStatusToast("⚠ Could not reach backend");
     });
   });
 }
 
-// ── SYNC WITH BACKEND ──────────────────────────────────────
-function syncWithBackend(videoId) {
-  chrome.storage.local.get(["ytai_videos"], function(res) {
-    var videos = res.ytai_videos || {};
-    var videoData = videos[videoId];
-    if (!videoData) return;
-    
-    console.log("[YT-AI] Syncing video to backend...", videoId);
-    fetch("http://127.0.0.1:8000/ingest/youtube/sync", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(videoData)
-    })
-    .then(function(r) { return r.json(); })
-    .then(function(data) { console.log("[YT-AI] Backend Sync Success:", data); })
-    .catch(function(err) { console.error("[YT-AI] Backend Sync Error:", err); });
-  });
+// ── Toast notification ─────────────────────────────────────
+function showStatusToast(msg) {
+  var toast = document.getElementById("ytai-toast");
+  if (!toast) return;
+  toast.textContent = msg;
+  toast.style.opacity = "1";
+  toast.style.transform = "translateY(0)";
+  setTimeout(function() {
+    toast.style.opacity = "0";
+    toast.style.transform = "translateY(8px)";
+  }, 3500);
 }
 
-// ── TRACK WATCH TIME ──────────────────────────────────────
+// ── Watch time tracker ─────────────────────────────────────
 var watchInterval = null;
 
 function startWatchTimeTracker(meta) {
-  // Clear any existing tracker
   if (watchInterval) clearInterval(watchInterval);
-
   var videoEl = document.querySelector("video");
   if (!videoEl) return;
 
   watchInterval = setInterval(function() {
-    // Only count if video is actually playing
     if (videoEl.paused) return;
-
-    var duration = videoEl.duration || 0;
+    var duration    = videoEl.duration || 0;
     var currentTime = videoEl.currentTime || 0;
-    var completion = duration > 0 ? Math.round((currentTime / duration) * 100) : 0;
-    var watchSeconds = Math.round(currentTime);
+    var completion  = duration > 0 ? Math.round((currentTime / duration) * 100) : 0;
 
     chrome.storage.local.get(["ytai_videos"], function(result) {
       var videos = result.ytai_videos || {};
       if (videos[meta.videoId]) {
-        videos[meta.videoId].watchTime   = watchSeconds;
-        videos[meta.videoId].completion  = completion;
+        videos[meta.videoId].watchTime  = Math.round(currentTime);
+        videos[meta.videoId].completion = completion;
         videos[meta.videoId].lastWatched = new Date().toISOString();
         chrome.storage.local.set({ ytai_videos: videos });
       }
     });
-  }, 5000); // update every 5 seconds
 
-  console.log("[YT-AI] Watch time tracker started");
+    if (completion >= 20) sendToBackend(meta);
+  }, 5000);
 }
 
 function stopWatchTimeTracker() {
-  if (watchInterval) {
-    clearInterval(watchInterval);
-    watchInterval = null;
-    console.log("[YT-AI] Watch time tracker stopped");
-  }
+  if (watchInterval) { clearInterval(watchInterval); watchInterval = null; }
 }
 
-// ── GET METADATA ──────────────────────────────────────────
-function getMeta() {
-  var videoId   = new URLSearchParams(window.location.search).get("v");
-  var titleEl   =
-    document.querySelector("h1.ytd-watch-metadata yt-formatted-string") ||
-    document.querySelector("h1 yt-formatted-string") ||
-    document.querySelector("ytd-watch-metadata h1");
-  var title     = titleEl
-    ? titleEl.textContent.trim()
-    : document.title.replace(" - YouTube","").trim();
-  var chEl      =
-    document.querySelector("ytd-channel-name yt-formatted-string a") ||
-    document.querySelector("#channel-name a") ||
-    document.querySelector("#owner #channel-name");
-  var channel   = chEl ? chEl.textContent.trim() : "";
-  var videoEl   = document.querySelector("video");
-  var duration  = videoEl ? formatTime(videoEl.duration) : "0:00";
-  var thumbnail = "https://img.youtube.com/vi/" + videoId + "/mqdefault.jpg";
+// ── Save video metadata locally ────────────────────────────
+function saveVideoMetadata(meta, isEdu, confidence) {
+  chrome.storage.local.get(["ytai_videos"], function(result) {
+    var videos = result.ytai_videos || {};
+    var prev   = videos[meta.videoId] || {};
+    videos[meta.videoId] = {
+      videoId:       meta.videoId,
+      title:         meta.title,
+      channel:       meta.channel,
+      duration:      meta.duration,
+      thumbnail:     meta.thumbnail,
+      isEducational: isEdu,
+      confidence:    Math.round(confidence * 100),
+      watchTime:     prev.watchTime || 0,
+      completion:    prev.completion || 0,
+      firstSeen:     prev.firstSeen || new Date().toISOString(),
+      lastWatched:   new Date().toISOString(),
+      rewatchCount:  (prev.rewatchCount || 0) + 1
+    };
+    chrome.storage.local.set({ ytai_videos: videos });
+  });
+}
 
+// ── Metadata ───────────────────────────────────────────────
+function getMeta() {
+  var videoId = new URLSearchParams(window.location.search).get("v");
+  var titleEl = document.querySelector("h1.ytd-watch-metadata yt-formatted-string") ||
+                document.querySelector("h1 yt-formatted-string") ||
+                document.querySelector("ytd-watch-metadata h1");
+  var title   = titleEl ? titleEl.textContent.trim() : document.title.replace(" - YouTube", "").trim();
+  var chEl    = document.querySelector("ytd-channel-name yt-formatted-string a") ||
+                document.querySelector("#channel-name a") ||
+                document.querySelector("#owner #channel-name");
+  var channel = chEl ? chEl.textContent.trim() : "";
+  var videoEl = document.querySelector("video");
+  var duration = videoEl ? formatTime(videoEl.duration) : "0:00";
+  var thumbnail = "https://img.youtube.com/vi/" + videoId + "/mqdefault.jpg";
   return { videoId, title, channel, duration, thumbnail };
 }
 
-function formatTime(seconds) {
-  if (!seconds || isNaN(seconds)) return "0:00";
-  var h = Math.floor(seconds / 3600);
-  var m = Math.floor((seconds % 3600) / 60);
-  var s = Math.floor(seconds % 60);
-  if (h > 0) return h + ":" + pad(m) + ":" + pad(s);
-  return m + ":" + pad(s);
+function formatTime(s) {
+  if (!s || isNaN(s)) return "0:00";
+  var h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = Math.floor(s % 60);
+  if (h > 0) return h + ":" + pad(m) + ":" + pad(sec);
+  return m + ":" + pad(sec);
 }
-
 function pad(n) { return n < 10 ? "0" + n : n; }
 
-// ── BADGE UI ──────────────────────────────────────────────
+// ── Badge UI — Floating Draggable Circle ───────────────────
 function showBadge(isEdu, confidence, meta) {
+  // Remove old badge
   var old = document.getElementById("ytai-badge");
   if (old) old.remove();
 
-  var pct        = Math.round(confidence * 100);
-  var scoreColor = confidence > 0.6 ? "#22c55e" : confidence > 0.3 ? "#f59e0b" : "#ef4444";
-  var tracking   = isEdu;
+  var pct      = Math.round(confidence * 100);
+  var tracking = isEdu;
+  var expanded = false;
 
-  var div = document.createElement("div");
-  div.id  = "ytai-badge";
-  div.setAttribute("style",
+  // ── Root container (positions the circle in top-right) ──
+  var badge = document.createElement("div");
+  badge.id  = "ytai-badge";
+  badge.setAttribute("style",
     "position:fixed !important;" +
-    "top:68px !important;" +
-    "left:0 !important;" +
-    "right:0 !important;" +
-    "z-index:99999 !important;" +
-    "display:flex !important;" +
-    "justify-content:center !important;" +
-    "pointer-events:none !important;"
+    "top:80px !important;" +
+    "right:18px !important;" +
+    "z-index:2147483647 !important;" +
+    "user-select:none !important;" +
+    "font-family:Inter,Roboto,Arial,sans-serif !important;"
   );
 
-  div.innerHTML =
-    '<div id="ytai-inner" style="' +
-      'pointer-events:all !important;' +
-      'display:flex !important;' +
-      'align-items:center !important;' +
-      'justify-content:space-between !important;' +
-      'padding:10px 20px !important;' +
-      'border-radius:12px !important;' +
-      'border:1.5px solid ' + (isEdu ? "rgba(34,197,94,0.5)" : "rgba(150,150,150,0.4)") + ' !important;' +
-      'background:' + (isEdu ? "rgba(20,20,20,0.92)" : "rgba(30,30,30,0.92)") + ' !important;' +
-      'backdrop-filter:blur(8px) !important;' +
-      'font-family:Roboto,Arial,sans-serif !important;' +
-      'min-width:500px !important;' +
-      'max-width:700px !important;' +
-      'box-shadow:0 4px 20px rgba(0,0,0,0.4) !important;' +
-    '">' +
-      '<div style="display:flex !important;align-items:center !important;gap:12px !important;">' +
-        '<span style="font-size:22px !important;">' + (isEdu ? "🎓" : "📺") + '</span>' +
-        '<div>' +
-          '<div style="font-size:13px !important;font-weight:600 !important;color:#ffffff !important;margin-bottom:2px !important;">' +
-            (isEdu ? "Educational Video Detected" : "Not Educational") +
-          '</div>' +
-          '<div style="font-size:11px !important;color:#aaaaaa !important;">' +
-            'Confidence: <b style="color:' + scoreColor + ' !important;">' + pct + '%</b>' +
-            '&nbsp;&nbsp;|&nbsp;&nbsp;' +
-            '<b style="color:#ffffff !important;">' + (meta.channel || "Unknown Channel") + '</b>' +
-            '&nbsp;&nbsp;|&nbsp;&nbsp;Duration: ' +
-            '<b style="color:#ffffff !important;">' + meta.duration + '</b>' +
-          '</div>' +
-        '</div>' +
+  // ── Toast (slides up when backend responds) ──────────────
+  var toast = document.createElement("div");
+  toast.id = "ytai-toast";
+  toast.setAttribute("style",
+    "position:absolute !important;" +
+    "bottom:56px !important;" +
+    "right:0 !important;" +
+    "background:rgba(10,10,14,0.95) !important;" +
+    "color:#4ade80 !important;" +
+    "font-size:12px !important;" +
+    "padding:6px 12px !important;" +
+    "border-radius:8px !important;" +
+    "white-space:nowrap !important;" +
+    "opacity:0 !important;" +
+    "transform:translateY(8px) !important;" +
+    "transition:opacity 0.3s,transform 0.3s !important;" +
+    "pointer-events:none !important;" +
+    "border:1px solid rgba(74,222,128,0.25) !important;"
+  );
+  badge.appendChild(toast);
+
+  // ── Circle button ────────────────────────────────────────
+  var circleColor = isEdu ? "#22c55e" : "#64748b";
+  var circle = document.createElement("div");
+  circle.id = "ytai-circle";
+  circle.setAttribute("style",
+    "width:48px !important;" +
+    "height:48px !important;" +
+    "border-radius:50% !important;" +
+    "background:rgba(10,10,14,0.92) !important;" +
+    "border:2.5px solid " + circleColor + " !important;" +
+    "display:flex !important;" +
+    "align-items:center !important;" +
+    "justify-content:center !important;" +
+    "cursor:grab !important;" +
+    "box-shadow:0 4px 20px rgba(0,0,0,0.5),0 0 0 0 " + circleColor + "44 !important;" +
+    "transition:border-color 0.3s,box-shadow 0.3s !important;" +
+    "position:relative !important;" +
+    "font-size:20px !important;"
+  );
+  circle.textContent = isEdu ? "🎓" : "📺";
+  badge.appendChild(circle);
+
+  // ── Tracking dot (pulsing green/grey) ────────────────────
+  var dot = document.createElement("div");
+  dot.setAttribute("style",
+    "position:absolute !important;" +
+    "bottom:1px !important;" +
+    "right:1px !important;" +
+    "width:12px !important;" +
+    "height:12px !important;" +
+    "border-radius:50% !important;" +
+    "background:" + (tracking ? "#22c55e" : "#64748b") + " !important;" +
+    "border:2px solid rgba(10,10,14,0.95) !important;" +
+    "transition:background 0.3s !important;"
+  );
+  circle.appendChild(dot);
+
+  // ── Expanded panel (hidden by default) ───────────────────
+  var panel = document.createElement("div");
+  panel.id = "ytai-panel";
+  panel.setAttribute("style",
+    "position:absolute !important;" +
+    "top:0 !important;" +
+    "right:54px !important;" +
+    "background:rgba(10,10,14,0.95) !important;" +
+    "border:1.5px solid " + (isEdu ? "rgba(34,197,94,0.4)" : "rgba(100,116,139,0.4)") + " !important;" +
+    "border-radius:14px !important;" +
+    "padding:14px 16px !important;" +
+    "min-width:280px !important;" +
+    "max-width:340px !important;" +
+    "backdrop-filter:blur(10px) !important;" +
+    "box-shadow:0 8px 32px rgba(0,0,0,0.6) !important;" +
+    "display:none !important;" +
+    "flex-direction:column !important;" +
+    "gap:10px !important;"
+  );
+
+  // Panel header
+  var panelHeader = document.createElement("div");
+  panelHeader.setAttribute("style",
+    "display:flex !important;align-items:center !important;justify-content:space-between !important;"
+  );
+
+  var panelTitle = document.createElement("div");
+  panelTitle.setAttribute("style",
+    "display:flex !important;align-items:center !important;gap:8px !important;"
+  );
+  panelTitle.innerHTML =
+    '<span style="font-size:18px !important;">' + (isEdu ? "🎓" : "📺") + '</span>' +
+    '<div>' +
+      '<div style="font-size:13px !important;font-weight:600 !important;color:#f8fafc !important;">' +
+        (isEdu ? "Educational" : "Not Educational") +
       '</div>' +
-      '<div style="display:flex !important;align-items:center !important;gap:10px !important;">' +
-        '<span id="ytai-lbl" style="font-size:12px !important;color:#aaaaaa !important;">' +
-          (isEdu ? "Tracking ON" : "Tracking OFF") +
-        '</span>' +
-        '<div id="ytai-btn" style="' +
-          'width:44px !important;height:24px !important;' +
-          'border-radius:12px !important;' +
-          'background:' + (isEdu ? "#22c55e" : "#555") + ' !important;' +
-          'cursor:pointer !important;position:relative !important;' +
-          'transition:background 0.3s !important;flex-shrink:0 !important;' +
-        '">' +
-          '<div id="ytai-knob" style="' +
-            'width:18px !important;height:18px !important;' +
-            'border-radius:50% !important;background:white !important;' +
-            'position:absolute !important;top:3px !important;' +
-            'left:' + (isEdu ? "23px" : "3px") + ' !important;' +
-            'transition:left 0.3s !important;' +
-          '"></div>' +
-        '</div>' +
+      '<div style="font-size:11px !important;color:#94a3b8 !important;margin-top:2px !important;">' +
+        'Confidence: <b style="color:' + (pct > 60 ? "#22c55e" : pct > 30 ? "#f59e0b" : "#ef4444") + ' !important;">' + pct + '%</b>' +
       '</div>' +
     '</div>';
 
-  document.documentElement.appendChild(div);
-  console.log("[YT-AI] Badge injected — fixed position");
+  var closeBtn = document.createElement("button");
+  closeBtn.textContent = "×";
+  closeBtn.setAttribute("style",
+    "background:none !important;border:none !important;color:#94a3b8 !important;" +
+    "font-size:20px !important;cursor:pointer !important;padding:0 4px !important;line-height:1 !important;"
+  );
 
-  // Auto hide after 6 seconds, show on hover
-  setTimeout(function() {
-    var inner = document.getElementById("ytai-inner");
-    if (inner) {
-      inner.style.opacity = "0.15";
-      inner.style.transition = "opacity 0.4s";
-      inner.addEventListener("mouseenter", function() { inner.style.opacity = "1"; });
-      inner.addEventListener("mouseleave", function() { inner.style.opacity = "0.15"; });
-    }
-  }, 6000);
+  panelHeader.appendChild(panelTitle);
+  panelHeader.appendChild(closeBtn);
+  panel.appendChild(panelHeader);
 
-  // Toggle handler
-  var btn  = document.getElementById("ytai-btn");
-  var knob = document.getElementById("ytai-knob");
-  var lbl  = document.getElementById("ytai-lbl");
+  // Panel info row
+  var infoRow = document.createElement("div");
+  infoRow.setAttribute("style",
+    "font-size:11px !important;color:#94a3b8 !important;" +
+    "background:rgba(255,255,255,0.04) !important;border-radius:8px !important;padding:8px 10px !important;" +
+    "display:flex !important;flex-direction:column !important;gap:4px !important;"
+  );
+  infoRow.innerHTML =
+    '<div><b style="color:#f8fafc !important;">' + (meta.channel || "Unknown") + '</b></div>' +
+    '<div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:260px;">' + (meta.title || "") + '</div>' +
+    '<div>Duration: <b style="color:#f8fafc !important;">' + meta.duration + '</b></div>';
+  panel.appendChild(infoRow);
 
-  if (btn) {
-    btn.addEventListener("click", function() {
-      tracking = !tracking;
-      btn.style.background  = tracking ? "#22c55e" : "#555";
-      knob.style.left       = tracking ? "23px" : "3px";
-      lbl.textContent       = tracking ? "Tracking ON" : "Tracking OFF";
-      setUserOverride(meta.videoId, tracking);
+  // Panel toggle row
+  var toggleRow = document.createElement("div");
+  toggleRow.setAttribute("style",
+    "display:flex !important;align-items:center !important;justify-content:space-between !important;"
+  );
 
-      if (tracking) {
-        saveVideoMetadata(meta, true, confidence);
-        startWatchTimeTracker(meta);
-      } else {
-        stopWatchTimeTracker();
-      }
+  var trackingLabel = document.createElement("span");
+  trackingLabel.id = "ytai-lbl";
+  trackingLabel.setAttribute("style",
+    "font-size:12px !important;color:#94a3b8 !important;font-weight:500 !important;"
+  );
+  trackingLabel.textContent = tracking ? "Tracking ON" : "Tracking OFF";
 
-      console.log("[YT-AI] Tracking toggled:", tracking);
-    });
+  var toggleBtn = document.createElement("div");
+  toggleBtn.id = "ytai-toggle";
+  toggleBtn.setAttribute("style",
+    "width:44px !important;height:24px !important;border-radius:12px !important;" +
+    "background:" + (tracking ? "#22c55e" : "#475569") + " !important;" +
+    "cursor:pointer !important;position:relative !important;transition:background 0.3s !important;flex-shrink:0 !important;"
+  );
+  var knob = document.createElement("div");
+  knob.id = "ytai-knob";
+  knob.setAttribute("style",
+    "width:18px !important;height:18px !important;border-radius:50% !important;" +
+    "background:white !important;position:absolute !important;" +
+    "top:3px !important;left:" + (tracking ? "23px" : "3px") + " !important;" +
+    "transition:left 0.3s !important;"
+  );
+  toggleBtn.appendChild(knob);
+  toggleRow.appendChild(trackingLabel);
+  toggleRow.appendChild(toggleBtn);
+  panel.appendChild(toggleRow);
+
+  // Panel toast (same element)
+  panel.appendChild(toast);
+
+  badge.appendChild(panel);
+  document.documentElement.appendChild(badge);
+
+  // ── Double-click to expand/collapse ──────────────────────
+  function toggleExpand() {
+    expanded = !expanded;
+    panel.style.display = expanded ? "flex" : "none";
+    circle.style.cursor = expanded ? "default" : "grab";
   }
+
+  circle.addEventListener("dblclick", toggleExpand);
+  closeBtn.addEventListener("click", function(e) {
+    e.stopPropagation();
+    toggleExpand();
+  });
+
+  // ── Toggle tracking ───────────────────────────────────────
+  toggleBtn.addEventListener("click", function() {
+    tracking = !tracking;
+    toggleBtn.style.background = tracking ? "#22c55e" : "#475569";
+    knob.style.left = tracking ? "23px" : "3px";
+    trackingLabel.textContent = tracking ? "Tracking ON" : "Tracking OFF";
+    dot.style.background = tracking ? "#22c55e" : "#64748b";
+    circle.style.borderColor = tracking ? "#22c55e" : "#64748b";
+    setUserOverride(meta.videoId, tracking);
+
+    if (tracking) {
+      saveVideoMetadata(meta, true, confidence);
+      startWatchTimeTracker(meta);
+      sendToBackend(meta);
+    } else {
+      stopWatchTimeTracker();
+    }
+  });
+
+  // ── Draggable ─────────────────────────────────────────────
+  var isDragging = false;
+  var dragStartX, dragStartY, badgeStartX, badgeStartY;
+
+  circle.addEventListener("mousedown", function(e) {
+    if (expanded) return; // Don't drag when expanded
+    isDragging = true;
+    dragStartX = e.clientX;
+    dragStartY = e.clientY;
+    var rect = badge.getBoundingClientRect();
+    badgeStartX = rect.right;   // distance from right
+    badgeStartY = rect.top;
+    circle.style.cursor = "grabbing";
+    e.preventDefault();
+  });
+
+  document.addEventListener("mousemove", function(e) {
+    if (!isDragging) return;
+    var dx = e.clientX - dragStartX;
+    var dy = e.clientY - dragStartY;
+    var newTop  = Math.max(10, Math.min(window.innerHeight - 60, badgeStartY + dy));
+    var newRight = Math.max(10, Math.min(window.innerWidth - 60, badgeStartX - e.clientX));
+    badge.style.top   = newTop + "px";
+    badge.style.right = newRight + "px";
+  });
+
+  document.addEventListener("mouseup", function() {
+    if (isDragging) {
+      isDragging = false;
+      circle.style.cursor = expanded ? "default" : "grab";
+    }
+  });
 }
 
-// ── MAIN ──────────────────────────────────────────────────
+// ── Main ───────────────────────────────────────────────────
 function run() {
   stopWatchTimeTracker();
 
   setTimeout(function() {
     var meta = getMeta();
-    if (!meta.videoId) {
-      console.warn("[YT-AI] No video ID found");
-      return;
-    }
-    console.log("[YT-AI] Video:", meta.title, "| Channel:", meta.channel);
+    if (!meta.videoId) { console.warn("[YT-AI] No video ID"); return; }
 
     getUserOverride(meta.videoId, function(override) {
       var isEdu, confidence;
@@ -321,25 +448,24 @@ function run() {
         var kws     = checkKeywords(meta.title);
         isEdu       = chMatch || kws.length > 0;
         confidence  = 0;
-        if (chMatch)      confidence += 0.5;
-        if (kws.length)   confidence += Math.min(kws.length / 3, 1) * 0.5;
+        if (chMatch)    confidence += 0.5;
+        if (kws.length) confidence += Math.min(kws.length / 3, 1) * 0.5;
         confidence  = Math.min(confidence, 1.0);
-        console.log("[YT-AI] Channel:", chMatch, "| Keywords:", kws.slice(0,5));
       }
 
-      console.log("[YT-AI] Educational:", isEdu, "| Confidence:", Math.round(confidence*100)+"%");
+      console.log("[YT-AI] Educational:", isEdu, "| Confidence:", Math.round(confidence * 100) + "%");
       showBadge(isEdu, confidence, meta);
 
-      // Save metadata + start tracker if educational
       if (isEdu) {
         saveVideoMetadata(meta, isEdu, confidence);
         startWatchTimeTracker(meta);
+        if (confidence >= 0.6) sendToBackend(meta);
       }
     });
   }, 2500);
 }
 
-// SPA navigation
+// SPA navigation support
 var lastUrl = location.href;
 new MutationObserver(function() {
   if (location.href !== lastUrl) {

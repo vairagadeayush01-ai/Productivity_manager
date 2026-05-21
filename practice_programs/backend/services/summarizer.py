@@ -82,3 +82,23 @@ Return ONLY valid JSON (no markdown, no backticks, no extra text):
 }}"""
 
     return _parse_json(_call_groq(prompt))
+
+
+def summarize_daily_diary(entries_text: str, date_str: str) -> str:
+    """
+    Takes a combined string of all learning activities for the day and generates a cohesive, 
+    journal-style diary entry summarizing the student's progress.
+    """
+    prompt = f"""You are a personal AI learning assistant helping a student maintain a learning diary.
+Today is {date_str}.
+
+The student has completed the following learning activities today:
+{entries_text}
+
+Write a comprehensive, engaging, and cohesive diary entry summarizing everything they learned today. 
+The summary should read like a personal journal entry (e.g., "Today, you made great progress! You tackled X and learned about Y...").
+Make it brief but comprehensive, covering all the individual topics and concepts they touched upon.
+Use paragraphs to make it readable. Do not output JSON. Do not use markdown headers. 
+Just write the diary entry text."""
+
+    return _call_groq(prompt)
