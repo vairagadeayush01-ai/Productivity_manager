@@ -10,20 +10,20 @@ def extract_video_id(url: str) -> str | None:
 
 def get_transcript(video_id: str) -> str:
     try:
-        transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+        transcript_list = YouTubeTranscriptApi().list(video_id)
         try:
-            transcript = transcript_list.find_manually_created_transcript(["en"])
+            transcript = transcript_list.find_transcript(["en", "en-IN", "en-US", "en-GB"])
         except Exception:
-            try:
-                transcript = transcript_list.find_generated_transcript(["en"])
-            except Exception:
-                transcript = next(iter(transcript_list))
+            transcript = next(iter(transcript_list))
+            
+        try:
+            if transcript.language_code != "en" and transcript.is_translatable:
+                transcript = transcript.translate("en")
+        except Exception:
+            pass
+
         chunks = transcript.fetch()
-        return " ".join(chunk["text"] for chunk in chunks)
-    except TranscriptsDisabled:
-        raise ValueError("Transcripts are disabled for this video.")
-    except NoTranscriptFound:
-        raise ValueError("No transcript found for this video.")
+        return " ".join((chunk["text"] if isinstance(chunk, dict) else getattr(chunk, "text", "")) for chunk in chunks)
     except Exception as e:
         raise ValueError(f"Could not fetch transcript: {str(e)}")
 

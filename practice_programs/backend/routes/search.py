@@ -37,6 +37,18 @@ async def get_today(db: Session = Depends(get_db)):
     ]}
 
 
+@router.get("/history")
+async def get_history(skip: int = 0, limit: int = 50, db: Session = Depends(get_db)):
+    entries = db.query(LearningEntry).order_by(LearningEntry.created_at.desc()).offset(skip).limit(limit).all()
+    total = db.query(LearningEntry).count()
+    return {"total": total, "entries": [
+        {"id": e.id, "source_type": e.source_type, "title": e.title,
+         "summary": e.summary, "topics": e.topics.split(", ") if e.topics else [],
+         "created_at": e.created_at.isoformat()}
+        for e in entries
+    ]}
+
+
 @router.get("/stats")
 async def get_stats(db: Session = Depends(get_db)):
     return {

@@ -23,6 +23,7 @@ class LearningEntry(Base):
     summary     = Column(Text)
     topics      = Column(String)   # comma-separated
     chroma_id   = Column(String)
+    metadata_json = Column(Text)   # Stores watchTime, completion, etc.
     created_at  = Column(DateTime, default=datetime.utcnow)
 
 

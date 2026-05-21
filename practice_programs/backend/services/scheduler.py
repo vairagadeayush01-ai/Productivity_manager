@@ -9,11 +9,12 @@ import os
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from database import SessionLocal
-from services import quiz_service, spaced_repetition, weekly_report, notifier
+from services import quiz_service, spaced_repetition, weekly_report, notifier, youtube_service, summarizer
+from routes.ingest import _save
 
 
-QUIZ_HOUR   = int(os.getenv("QUIZ_HOUR", 14))    # 2 PM default
-QUIZ_MINUTE = int(os.getenv("QUIZ_MINUTE", 0))
+QUIZ_HOUR   = int(os.getenv("QUIZ_HOUR", 20))    # 8 PM default
+QUIZ_MINUTE = int(os.getenv("QUIZ_MINUTE", 30))  # 30 mins default (8:30 PM)
 
 
 def _daily_quiz_job():
@@ -83,6 +84,98 @@ def _weekly_report_job():
         db.close()
 
 
+def _batch_summarize_job():
+    print("[Scheduler] Running batch YouTube summarizer...")
+    db = SessionLocal()
+    try:
+        from database import LearningEntry
+        import json
+        unsummarized = db.query(LearningEntry).filter(
+            LearningEntry.source_type == "youtube",
+            (LearningEntry.summary == None) | (LearningEntry.summary == "")
+        ).all()
+        
+        if not unsummarized:
+            print("[Scheduler] No unsummarized videos found.")
+            return
+
+        success_count = 0
+        for entry in unsummarized:
+            try:
+                # Extract video ID from URL
+                video_id = youtube_service.extract_video_id(entry.source_url)
+                if not video_id:
+                    continue
+                
+                print(f"[Scheduler] Fetching transcript for {entry.title}...")
+                transcript = youtube_service.get_transcript(video_id)
+                entry.raw_content = transcript[:2000]
+                
+                print(f"[Scheduler] Summarizing {entry.title}...")
+                result = summarizer.summarize_transcript(transcript, entry.title)
+                
+                # _save handles ChromaDB and spaced repetition updates
+                _save(db, "youtube", entry.title, entry.source_url, transcript, result)
+                
+                # We need to delete the original empty entry since _save creates a new one, 
+                # OR we could just update the existing one. Since _save makes a new one:
+                db.delete(entry)
+                db.commit()
+                
+                success_count += 1
+            except Exception as e:
+                print(f"[Scheduler] Failed to summarize {entry.title}: {e}")
+                
+        if success_count > 0:
+            notifier.notify_quiz_ready(success_count) # Reuse the notification or make a new one, we can just print for now
+            print(f"[Scheduler] Successfully summarized {success_count} videos.")
+            
+    except Exception as e:
+        print(f"[Scheduler] Batch summarize job failed: {e}")
+    finally:
+        db.close()
+
+
+def _daily_github_job():
+    """Daily GitHub sync background job."""
+    print("[Scheduler] Running daily GitHub sync...")
+    db = SessionLocal()
+    try:
+        from routes.Auto_fetch import _store
+        from services.git_hub_today import fetch_today_activity
+        data = fetch_today_activity()
+        if data["total_commits"] == 0 and not data["new_repos"]:
+            print("[Scheduler] No GitHub activity today.")
+            return
+        title = f"GitHub — {data['total_commits']} commit(s) in {len(data['repos_touched'])} repo(s)"
+        _store(db, "github", title, data["summary_text"], f"https://github.com/{data['username']}")
+        print("[Scheduler] GitHub activity saved successfully.")
+    except Exception as e:
+        print(f"[Scheduler] Daily GitHub job failed: {e}")
+    finally:
+        db.close()
+
+
+def _daily_leetcode_job():
+    """Daily LeetCode sync background job."""
+    print("[Scheduler] Running daily LeetCode sync...")
+    db = SessionLocal()
+    try:
+        from routes.Auto_fetch import _store
+        from services.leetcode_today import fetch_today_submissions
+        data = fetch_today_submissions()
+        if data["total_solved"] == 0:
+            print("[Scheduler] No LeetCode problems solved today.")
+            return
+        title = f"LeetCode — {data['total_solved']} problem(s) solved"
+        _store(db, "leetcode", title, data["summary_text"], f"https://leetcode.com/{data['username']}")
+        print("[Scheduler] LeetCode activity saved successfully.")
+    except Exception as e:
+        print(f"[Scheduler] Daily LeetCode job failed: {e}")
+    finally:
+        db.close()
+
+
 def start_scheduler():
     scheduler = BackgroundScheduler()
 
@@ -107,6 +200,27 @@ def start_scheduler():
         id="weekly_report", replace_existing=True
     )
 
+    # Batch summarizer daily at 7:00 PM (19:00)
+    scheduler.add_job(
+        _batch_summarize_job,
+        CronTrigger(hour=19, minute=0),
+        id="batch_summarize", replace_existing=True
+    )
+
+    # Daily GitHub sync at 11:30 PM (23:30)
+    scheduler.add_job(
+        _daily_github_job,
+        CronTrigger(hour=23, minute=30),
+        id="daily_github", replace_existing=True
+    )
+
+    # Daily LeetCode sync at 11:30 PM (23:30)
+    scheduler.add_job(
+        _daily_leetcode_job,
+        CronTrigger(hour=23, minute=30),
+        id="daily_leetcode", replace_existing=True
+    )
+
     scheduler.start()
-    print(f"[Scheduler] Started — daily quiz at {QUIZ_HOUR:02d}:{QUIZ_MINUTE:02d}, spaced rep at 09:00, weekly report Sundays 20:00")
+    print(f"[Scheduler] Started — batch summarize at 19:00, github/leetcode at 23:30, daily quiz at {QUIZ_HOUR:02d}:{QUIZ_MINUTE:02d}, spaced rep at 09:00, weekly report Sundays 20:00")
     return scheduler

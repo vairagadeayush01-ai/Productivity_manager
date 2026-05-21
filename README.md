@@ -1,40 +1,77 @@
 # Productivity Manager
 
-Productivity Manager is a personal learning tracker that helps capture what you study, summarize it with AI, and turn it into searchable notes and quizzes.
+Productivity Manager is an AI-assisted learning workspace for capturing what you study, turning it into summaries, and reviewing it later through search, quizzes, and spaced repetition.
 
-The repository currently contains:
+This repository includes:
 
-- A FastAPI backend for ingesting learning activity, generating summaries, storing notes, and running quiz/review flows
-- A Chrome extension prototype for detecting educational YouTube activity
+- A FastAPI backend for ingestion, search, reporting, and quiz workflows
+- A React + Vite frontend dashboard for interacting with the system visually
+- A Chrome extension prototype for tracking educational YouTube content
 
-## Features
+## Highlights
 
-- Log learning from YouTube videos, manual notes, and LeetCode practice
-- Generate AI summaries and key concepts using Groq
-- Store searchable knowledge in ChromaDB
-- Track learning history with SQLite or a custom SQLAlchemy database URL
-- Create daily quizzes and topic-based review quizzes
-- Support spaced repetition and scheduled review flows
-- Auto-fetch GitHub and LeetCode activity through backend services
+- Capture learning from YouTube links, manual notes, and LeetCode practice
+- Generate summaries and topic tags with Groq-powered backend services
+- Search saved knowledge semantically with ChromaDB
+- Review due topics with quiz and spaced repetition flows
+- Track history, dashboard stats, and weekly reports
+- Sync coding activity from GitHub and LeetCode
 
-## Project Structure
+## Repository Layout
 
 ```text
 practice_programs/
-  backend/                 FastAPI backend
+  backend/                 FastAPI API, services, storage, scheduler
+  frontend/                React + Vite web app
   youtube-ai-extension/    Chrome extension prototype
+README.md
 ```
 
-## Backend Setup
+## Architecture
 
-1. Create and activate a virtual environment.
-2. Install dependencies:
+### Backend
+
+The backend entry point is `practice_programs/backend/Main.py`. It starts a FastAPI app, enables CORS, initializes the database, and starts the scheduler on startup.
+
+Main route groups:
+
+- `/ingest` for YouTube, manual note, and LeetCode ingestion
+- `/search` for semantic search, history, and stats
+- `/quiz` for daily quiz, topic review, answers, and due topics
+- `/report` for weekly reporting
+- `/reader` for reading workflows
+- `/fetch` for GitHub and LeetCode sync
+
+### Frontend
+
+The frontend lives in `practice_programs/frontend` and uses React, Vite, `react-router-dom`, `axios`, and `lucide-react`.
+
+Main UI areas:
+
+- Dashboard
+- Second Brain search
+- Daily Quiz
+- History
+- Weekly Report
+- Add Entry modal
+
+By default, the frontend calls the backend at `http://127.0.0.1:8000`.
+
+### Browser Extension
+
+The Chrome extension in `practice_programs/youtube-ai-extension` is a Manifest V3 prototype named `YT AI Learning Tracker`. It is intended to detect educational YouTube activity and support ingestion workflows.
+
+## Setup
+
+### 1. Backend
+
+Create a virtual environment, activate it, and install dependencies:
 
 ```bash
 pip install -r practice_programs/backend/requirements.txt
 ```
 
-3. Create a `.env` file inside `practice_programs/backend/`.
+Create a `.env` file inside `practice_programs/backend/`.
 
 Example:
 
@@ -45,41 +82,49 @@ CHROMA_DB_PATH=./chroma_db
 GITHUB_USERNAME=your_github_username
 GITHUB_TOKEN=your_github_token
 LEETCODE_USERNAME=your_leetcode_username
-QUIZ_HOUR=14
-QUIZ_MINUTE=0
+QUIZ_HOUR=23
+QUIZ_MINUTE=30
 ```
 
-## Running the Backend
-
-From `practice_programs/backend`:
+Run the API from `practice_programs/backend`:
 
 ```bash
 uvicorn Main:app --reload
 ```
 
-After startup:
+Backend URLs:
 
-- API base URL: `http://localhost:8000`
-- API docs: `http://localhost:8000/docs`
+- API: `http://127.0.0.1:8000`
+- Docs: `http://127.0.0.1:8000/docs`
 
-## Main API Areas
+### 2. Frontend
 
-- `/ingest` for adding learning entries
-- `/search` for semantic lookup over saved content
-- `/reader` for reading-related workflows
-- `/quiz` for daily and topic review quizzes
-- `/report` for summaries and reporting
-- `/auto-fetch` for GitHub and LeetCode activity sync
+Install frontend dependencies:
 
-## Chrome Extension
+```bash
+cd practice_programs/frontend
+npm install
+```
 
-The `practice_programs/youtube-ai-extension` folder contains a Manifest V3 browser extension named `YT AI Learning Tracker`.
+Start the development server:
 
-To test it locally:
+```bash
+npm run dev
+```
 
-1. Open Chrome extensions
+Build for production:
+
+```bash
+npm run build
+```
+
+### 3. Chrome Extension
+
+To load the extension locally:
+
+1. Open `chrome://extensions`
 2. Enable Developer Mode
-3. Choose `Load unpacked`
+3. Click `Load unpacked`
 4. Select `practice_programs/youtube-ai-extension`
 
 ## Tech Stack
@@ -87,10 +132,13 @@ To test it locally:
 - FastAPI
 - SQLAlchemy
 - ChromaDB
-- Groq API
 - APScheduler
+- Groq API
+- React
+- Vite
 - Chrome Extension Manifest V3
 
-## Current Status
+## Notes
 
-This project is still in active development, so some flows may be experimental or incomplete.
+- Local database files and Chroma persistence are generated at runtime and should not be committed.
+- The project is under active development, so some integrations and flows may still be evolving.

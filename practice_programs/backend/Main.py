@@ -13,7 +13,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:8501", "http://127.0.0.1:8501"],
+    allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -30,9 +30,9 @@ app.include_router(report.router)
 async def startup():
     init_db()
     start_scheduler()
-    print("✅ Database ready")
-    print("✅ Scheduler started")
-    print("📖 API docs → http://localhost:8000/docs")
+    print("Database ready")
+    print("Scheduler started")
+    print("API docs -> http://localhost:8000/docs")
 
 
 @app.get("/")

@@ -56,6 +56,8 @@ function saveVideoMetadata(meta, isEdu, confidence) {
   chrome.storage.local.get(["ytai_videos"], function(result) {
     var videos = result.ytai_videos || {};
 
+    var isNew = !videos[meta.videoId];
+    
     // Save/update this video's data
     videos[meta.videoId] = {
       videoId:      meta.videoId,
@@ -65,8 +67,8 @@ function saveVideoMetadata(meta, isEdu, confidence) {
       thumbnail:    meta.thumbnail,
       isEducational: isEdu,
       confidence:   Math.round(confidence * 100),
-      watchTime:    0,           // will update as user watches
-      completion:   0,           // will update as user watches
+      watchTime:    videos[meta.videoId] ? videos[meta.videoId].watchTime : 0,
+      completion:   videos[meta.videoId] ? videos[meta.videoId].completion : 0,
       firstSeen:    videos[meta.videoId]
                     ? videos[meta.videoId].firstSeen
                     : new Date().toISOString(),
@@ -76,9 +78,35 @@ function saveVideoMetadata(meta, isEdu, confidence) {
                     : 1
     };
 
+    videos[meta.videoId] = { ...videos[meta.videoId], ...meta };
+      
     chrome.storage.local.set({ ytai_videos: videos }, function() {
-      console.log("[YT-AI] Metadata saved for:", meta.title);
+      if (isEdu) {
+         // Sync immediately on first open, and then every 30 seconds of watch time
+         if (isNew || (videos[meta.videoId].watchTime % 30 === 0)) {
+             syncWithBackend(meta.videoId);
+         }
+      }
     });
+  });
+}
+
+// ── SYNC WITH BACKEND ──────────────────────────────────────
+function syncWithBackend(videoId) {
+  chrome.storage.local.get(["ytai_videos"], function(res) {
+    var videos = res.ytai_videos || {};
+    var videoData = videos[videoId];
+    if (!videoData) return;
+    
+    console.log("[YT-AI] Syncing video to backend...", videoId);
+    fetch("http://127.0.0.1:8000/ingest/youtube/sync", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(videoData)
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) { console.log("[YT-AI] Backend Sync Success:", data); })
+    .catch(function(err) { console.error("[YT-AI] Backend Sync Error:", err); });
   });
 }
 

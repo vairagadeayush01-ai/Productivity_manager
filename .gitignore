@@ -1,3 +1,8 @@
 .env
 __pycache__/
 *.py[cod]
+.venv/
+practice_programs/backend/chroma_db/
+practice_programs/backend/*.db
+practice_programs/frontend/node_modules/
+practice_programs/frontend/dist/

@@ -15,6 +15,20 @@ router = APIRouter(prefix="/ingest", tags=["ingest"])
 class YouTubeRequest(BaseModel):
     url: str
 
+class YouTubeTrackingRequest(BaseModel):
+    videoId: str
+    title: str
+    channel: str
+    duration: str
+    thumbnail: str
+    isEducational: bool
+    confidence: int
+    watchTime: int
+    completion: int
+    firstSeen: str
+    lastWatched: str
+    rewatchCount: int
+
 class ManualLogRequest(BaseModel):
     note: str
 
@@ -65,6 +79,7 @@ async def ingest_youtube(req: YouTubeRequest, db: Session = Depends(get_db)):
     try:
         transcript = get_transcript(video_id)
     except ValueError as e:
+        print(f"FAILED TO GET TRANSCRIPT FOR: {req.url} (ID: {video_id}) - Error: {str(e)}")
         raise HTTPException(422, str(e))
     title = get_video_title(video_id)
     try:
@@ -72,6 +87,47 @@ async def ingest_youtube(req: YouTubeRequest, db: Session = Depends(get_db)):
     except Exception as e:
         raise HTTPException(502, f"Groq API error: {e}")
     return _save(db, "youtube", title, req.url, transcript, result)
+
+
+import json
+
+@router.post("/youtube/sync")
+async def sync_youtube_tracking(req: YouTubeTrackingRequest, db: Session = Depends(get_db)):
+    # Check if we already have this video unsummarized
+    url = f"https://www.youtube.com/watch?v={req.videoId}"
+    existing = db.query(LearningEntry).filter(
+        LearningEntry.source_url == url,
+        LearningEntry.summary == None
+    ).first()
+    
+    metadata_dict = req.dict()
+    
+    if existing:
+        # Update metadata
+        existing.metadata_json = json.dumps(metadata_dict)
+        db.commit()
+        return {"status": "updated", "id": existing.id}
+    else:
+        # Check if it was already summarized, if so, just update metadata (optional)
+        summarized = db.query(LearningEntry).filter(LearningEntry.source_url == url).first()
+        if summarized:
+            summarized.metadata_json = json.dumps(metadata_dict)
+            db.commit()
+            return {"status": "updated_existing", "id": summarized.id}
+        
+        # New entry, no summary yet
+        entry = LearningEntry(
+            source_type="youtube",
+            title=req.title,
+            source_url=url,
+            raw_content="", # Will fetch transcript during batch job
+            metadata_json=json.dumps(metadata_dict)
+        )
+        db.add(entry)
+        db.commit()
+        db.refresh(entry)
+        return {"status": "created_for_batch", "id": entry.id}
+
 
 
 @router.post("/log")
