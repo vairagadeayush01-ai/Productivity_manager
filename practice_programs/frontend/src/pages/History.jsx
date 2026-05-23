@@ -5,14 +5,14 @@ import PageHeader from '../components/PageHeader';
 import EmptyState from '../components/EmptyState';
 import SourceBadge from '../components/SourceBadge';
 import {
-  BookOpen, Github, Code2, Youtube, FileText, ChevronRight,
+  BookOpen, GitBranch, Code2, Youtube, FileText, ChevronRight,
   Calendar, Search, SlidersHorizontal
 } from 'lucide-react';
 
 const SOURCE_TABS = [
   { key: null,       label: 'All',      icon: BookOpen },
   { key: 'youtube',  label: 'YouTube',  icon: Youtube  },
-  { key: 'github',   label: 'GitHub',   icon: Github   },
+  { key: 'github',   label: 'GitHub',   icon: GitBranch },
   { key: 'leetcode', label: 'LeetCode', icon: Code2    },
   { key: 'manual',   label: 'Manual',   icon: FileText },
 ];

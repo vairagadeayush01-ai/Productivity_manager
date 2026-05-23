@@ -6,7 +6,7 @@ import EmptyState from '../components/EmptyState';
 import SourceBadge from '../components/SourceBadge';
 import {
   Search as SearchIcon, BrainCircuit, Zap,
-  Youtube, Github, Code2, FileText, BookOpen,
+  Youtube, GitBranch, Code2, FileText, BookOpen,
 } from 'lucide-react';
 
 const SUGGESTIONS = [
@@ -20,7 +20,7 @@ const SUGGESTIONS = [
 const SOURCE_FILTERS = [
   { key: null,       label: 'All',      icon: BookOpen },
   { key: 'youtube',  label: 'YouTube',  icon: Youtube  },
-  { key: 'github',   label: 'GitHub',   icon: Github   },
+  { key: 'github',   label: 'GitHub',   icon: GitBranch },
   { key: 'leetcode', label: 'LeetCode', icon: Code2    },
   { key: 'manual',   label: 'Manual',   icon: FileText },
 ];
