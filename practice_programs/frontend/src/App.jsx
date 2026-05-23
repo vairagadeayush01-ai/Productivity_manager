@@ -23,14 +23,14 @@ function AppRoutes() {
       {!isDiary && !isLogin && <Navbar />}
       <main className={isDiary || isLogin ? 'app-main app-main--flush' : 'app-main'}>
         <Routes>
-          <Route path="/login" element={<Login />} />
-          <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-          <Route path="/search" element={<ProtectedRoute><SemanticSearch /></ProtectedRoute>} />
-          <Route path="/quiz" element={<ProtectedRoute><Quiz /></ProtectedRoute>} />
-          <Route path="/history" element={<ProtectedRoute><HistoryFeed /></ProtectedRoute>} />
+          <Route path="/login"       element={<Login />} />
+          <Route path="/"            element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+          <Route path="/search"      element={<ProtectedRoute><SemanticSearch /></ProtectedRoute>} />
+          <Route path="/quiz"        element={<ProtectedRoute><Quiz /></ProtectedRoute>} />
+          <Route path="/history"     element={<ProtectedRoute><HistoryFeed /></ProtectedRoute>} />
           <Route path="/diary/:date" element={<ProtectedRoute><DiaryReader /></ProtectedRoute>} />
-          <Route path="/report" element={<ProtectedRoute><Report /></ProtectedRoute>} />
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="/report"      element={<ProtectedRoute><Report /></ProtectedRoute>} />
+          <Route path="*"            element={<Navigate to="/" replace />} />
         </Routes>
       </main>
     </div>

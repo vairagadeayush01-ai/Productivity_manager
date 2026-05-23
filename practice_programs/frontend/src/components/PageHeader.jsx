@@ -1,18 +1,18 @@
 import React from 'react';
 
-export default function PageHeader({ icon: Icon, iconColor, iconBg, title, subtitle, children }) {
+export default function PageHeader({ icon: Icon, title, subtitle, action }) {
   return (
-    <header className="page-header">
+    <div className="page-header">
       {Icon && (
-        <div className="page-header__icon" style={{ background: iconBg || 'rgba(99,102,241,0.15)' }}>
-          <Icon size={28} color={iconColor || 'var(--primary-glow)'} />
+        <div className="page-header__icon">
+          <Icon size={22} />
         </div>
       )}
-      <div className="page-header__text">
+      <div style={{ flex: 1, minWidth: 0 }}>
         <h1 className="page-title">{title}</h1>
         {subtitle && <p className="page-subtitle">{subtitle}</p>}
       </div>
-      {children && <div className="page-header__actions">{children}</div>}
-    </header>
+      {action && <div className="page-header__actions">{action}</div>}
+    </div>
   );
 }

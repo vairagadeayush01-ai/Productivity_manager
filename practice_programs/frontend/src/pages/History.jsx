@@ -1,290 +1,304 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import PageHeader from '../components/PageHeader';
 import EmptyState from '../components/EmptyState';
 import SourceBadge from '../components/SourceBadge';
 import {
-  BookOpen, GitBranch, Code2, Youtube, FileText, ChevronRight,
-  Calendar, Search, SlidersHorizontal
+  History as HistoryIcon, BookOpen, Video, GitBranch,
+  Code2, FileText, Calendar, Search, ChevronRight, SlidersHorizontal,
 } from 'lucide-react';
 
 const SOURCE_TABS = [
-  { key: null,       label: 'All',      icon: BookOpen },
-  { key: 'youtube',  label: 'YouTube',  icon: Youtube  },
-  { key: 'github',   label: 'GitHub',   icon: GitBranch },
-  { key: 'leetcode', label: 'LeetCode', icon: Code2    },
-  { key: 'manual',   label: 'Manual',   icon: FileText },
+  { key: null,       label: 'All',      icon: HistoryIcon },
+  { key: 'youtube',  label: 'YouTube',  icon: Video       },
+  { key: 'github',   label: 'GitHub',   icon: GitBranch   },
+  { key: 'leetcode', label: 'LeetCode', icon: Code2       },
+  { key: 'manual',   label: 'Manual',   icon: FileText    },
 ];
 
-function formatDate(isoString) {
-  const d = new Date(isoString);
-  return d.toLocaleDateString(undefined, {
-    weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
-  });
-}
+const VIEWS = ['entries', 'diary'];
+const PAGE_SIZE = 10;
 
-function EntryCard({ entry, onClick }) {
-  const topics = Array.isArray(entry.topics)
-    ? entry.topics.slice(0, 3)
-    : (entry.topics || '').split(', ').filter(Boolean).slice(0, 3);
-
-  return (
-    <button
-      type="button"
-      className="glass-card entry-card"
-      onClick={onClick}
-      style={{
-        width: '100%', border: 'none', textAlign: 'left',
-        color: 'inherit', cursor: 'pointer', padding: '1.25rem 1.5rem',
-        display: 'flex', alignItems: 'flex-start', gap: '1rem',
-      }}
-    >
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.4rem', flexWrap: 'wrap' }}>
-          <SourceBadge type={entry.source_type} />
-          <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '3px' }}>
-            <Calendar size={11} /> {formatDate(entry.created_at)}
-          </span>
-        </div>
-        <h3 style={{
-          fontSize: '0.97rem', fontWeight: 600, margin: '0 0 0.35rem',
-          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        }}>
-          {entry.title || 'Untitled'}
-        </h3>
-        {entry.summary && (
-          <p style={{
-            fontSize: '0.83rem', color: 'var(--text-muted)', margin: 0,
-            display: '-webkit-box', WebkitLineClamp: 2,
-            WebkitBoxOrient: 'vertical', overflow: 'hidden', lineHeight: 1.55,
-          }}>
-            {entry.summary}
-          </p>
-        )}
-        {topics.length > 0 && (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem', marginTop: '0.6rem' }}>
-            {topics.map((t, i) => (
-              <span key={i} style={{
-                fontSize: '0.7rem', padding: '2px 8px', borderRadius: '20px',
-                background: 'rgba(99,102,241,0.12)', color: '#c7d2fe',
-                border: '1px solid rgba(99,102,241,0.2)',
-              }}>
-                {t}
-              </span>
-            ))}
-          </div>
-        )}
-      </div>
-      <ChevronRight size={18} color="var(--primary-glow)" style={{ flexShrink: 0, marginTop: '2px' }} aria-hidden />
-    </button>
-  );
+function youtubeThumb(url) {
+  if (!url) return null;
+  const m = url.match(/[?&]v=([^&]+)/);
+  const id = m ? m[1] : url.split('/').pop();
+  return id ? `https://img.youtube.com/vi/${id}/mqdefault.jpg` : null;
 }
 
 export default function History() {
   const navigate = useNavigate();
 
-  const [activeTab, setActiveTab]     = useState(null);   // null = All
-  const [startDate, setStartDate]     = useState('');
-  const [endDate, setEndDate]         = useState('');
-  const [showFilters, setShowFilters] = useState(false);
+  /* ── view tabs ── */
+  const [view,       setView]       = useState('entries');
+  const [sourceTab,  setSourceTab]  = useState(null);
+  const [page,       setPage]       = useState(1);
+  const [startDate,  setStartDate]  = useState('');
+  const [endDate,    setEndDate]    = useState('');
+  const [showFilter, setShowFilter] = useState(false);
 
-  const [entries, setEntries] = useState([]);
-  const [total, setTotal]     = useState(0);
-  const [page, setPage]       = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [error, setError]     = useState(null);
+  /* ── data ── */
+  const [entries,   setEntries]   = useState([]);
+  const [total,     setTotal]     = useState(0);
+  const [diaries,   setDiaries]   = useState([]);
+  const [loading,   setLoading]   = useState(true);
 
-  const LIMIT = 20;
+  /* ── load entries ── */
+  const loadEntries = useCallback(async () => {
+    setLoading(true);
+    try {
+      const params = {
+        page, limit: PAGE_SIZE,
+        source_type: sourceTab || undefined,
+        start_date: startDate || undefined,
+        end_date:   endDate   || undefined,
+      };
+      const res = await api.getHistory(params);
+      setEntries(res.entries || res.results || []);
+      setTotal(res.total || 0);
+    } catch (err) {
+      console.error(err);
+    } finally { setLoading(false); }
+  }, [page, sourceTab, startDate, endDate]);
 
-  const load = useCallback(
-    async (tab, start, end, pageNum) => {
-      setLoading(true);
-      setError(null);
-      try {
-        const data = await api.getAllHistory({
-          skip:        pageNum * LIMIT,
-          limit:       LIMIT,
-          source_type: tab || null,
-          start_date:  start || null,
-          end_date:    end   || null,
-        });
-        setEntries(data.entries || []);
-        setTotal(data.total || 0);
-      } catch {
-        setError('Failed to load history. Is the backend running?');
-      } finally {
-        setLoading(false);
-      }
-    },
-    []
-  );
+  /* ── load diaries ── */
+  const loadDiaries = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await api.getDiaries();
+      setDiaries(res.diaries || []);
+    } catch (err) {
+      console.error(err);
+    } finally { setLoading(false); }
+  }, []);
 
   useEffect(() => {
-    setPage(0);
-    load(activeTab, startDate, endDate, 0);
-  }, [activeTab, startDate, endDate, load]);
+    if (view === 'entries') loadEntries();
+    else loadDiaries();
+  }, [view, loadEntries, loadDiaries]);
 
-  const handlePageChange = (newPage) => {
-    setPage(newPage);
-    load(activeTab, startDate, endDate, newPage);
+  const resetFilters = () => {
+    setSourceTab(null);
+    setStartDate('');
+    setEndDate('');
+    setPage(1);
   };
 
-  const totalPages = Math.ceil(total / LIMIT);
+  const totalPages = Math.ceil(total / PAGE_SIZE);
 
   return (
-    <div className="page page--narrow">
+    <div className="page animate-fade-in">
       <PageHeader
-        icon={BookOpen}
-        title="Learning history"
-        subtitle={total ? `${total} entr${total === 1 ? 'y' : 'ies'} logged` : 'All your learning entries'}
+        icon={HistoryIcon}
+        title="History"
+        subtitle="Browse every entry you've logged and your daily journal."
       />
 
-      {/* Source tabs */}
+      {/* ── View toggle ── */}
       <div style={{
-        display: 'flex', gap: '0.5rem', flexWrap: 'wrap',
-        marginBottom: '1rem', alignItems: 'center',
+        display: 'flex', gap: '4px',
+        background: 'var(--bg-surface-2)',
+        border: '1px solid var(--border)',
+        borderRadius: 'var(--radius-sm)',
+        padding: '4px',
+        marginBottom: 'var(--space-lg)',
+        width: 'fit-content',
       }}>
-        {SOURCE_TABS.map(({ key, label, icon: Icon }) => (
+        {VIEWS.map(v => (
           <button
-            key={String(key)}
+            key={v}
             type="button"
-            onClick={() => setActiveTab(key)}
-            className={activeTab === key ? 'btn-primary' : 'btn-secondary'}
+            onClick={() => { setView(v); setLoading(true); }}
             style={{
-              display: 'flex', alignItems: 'center', gap: '0.4rem',
-              padding: '0.45rem 1rem', fontSize: '0.85rem',
+              padding: '6px 16px',
+              borderRadius: 'calc(var(--radius-sm) - 2px)',
+              border: 'none',
+              fontFamily: 'inherit',
+              fontSize: '0.8125rem',
+              fontWeight: 500,
+              cursor: 'pointer',
+              transition: 'all 0.15s',
+              background: view === v ? 'var(--bg-surface)' : 'transparent',
+              color: view === v ? 'var(--text-main)' : 'var(--text-muted)',
+              boxShadow: view === v ? 'var(--shadow-xs)' : 'none',
             }}
           >
-            <Icon size={14} /> {label}
+            {v === 'entries' ? 'Entries' : 'Diary'}
           </button>
         ))}
-
-        <button
-          type="button"
-          onClick={() => setShowFilters(f => !f)}
-          className={showFilters ? 'btn-primary' : 'btn-secondary'}
-          style={{
-            marginLeft: 'auto', display: 'flex', alignItems: 'center',
-            gap: '0.4rem', padding: '0.45rem 1rem', fontSize: '0.85rem',
-          }}
-          aria-label="Toggle date filters"
-        >
-          <SlidersHorizontal size={14} /> Filters
-        </button>
       </div>
 
-      {/* Date range filters */}
-      {showFilters && (
-        <div className="glass-card animate-fade-in" style={{
-          padding: '1rem 1.25rem', marginBottom: '1rem',
-          display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'flex-end',
-        }}>
-          <div style={{ flex: 1, minWidth: '140px' }}>
-            <label style={{ fontSize: '0.78rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.3rem' }}>
-              From
-            </label>
-            <input
-              type="date"
-              value={startDate}
-              onChange={e => setStartDate(e.target.value)}
-              style={{
-                width: '100%', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
-                borderRadius: '8px', padding: '0.45rem 0.75rem', color: 'var(--text-main)', fontSize: '0.88rem',
-              }}
-            />
-          </div>
-          <div style={{ flex: 1, minWidth: '140px' }}>
-            <label style={{ fontSize: '0.78rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.3rem' }}>
-              To
-            </label>
-            <input
-              type="date"
-              value={endDate}
-              onChange={e => setEndDate(e.target.value)}
-              style={{
-                width: '100%', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
-                borderRadius: '8px', padding: '0.45rem 0.75rem', color: 'var(--text-main)', fontSize: '0.88rem',
-              }}
-            />
-          </div>
-          <button
-            type="button"
-            className="btn-secondary"
-            onClick={() => { setStartDate(''); setEndDate(''); }}
-            style={{ fontSize: '0.82rem', padding: '0.45rem 1rem' }}
-          >
-            Clear
-          </button>
-        </div>
-      )}
-
-      {/* Loading */}
-      {loading && (
-        <div className="loading-block">
-          <div className="spinner" />
-          <p style={{ color: 'var(--text-muted)' }}>Loading entries…</p>
-        </div>
-      )}
-
-      {/* Error */}
-      {error && !loading && (
-        <div className="auth-error" style={{ textAlign: 'center' }}>{error}</div>
-      )}
-
-      {/* Empty state */}
-      {!loading && !error && entries.length === 0 && (
-        <EmptyState
-          icon={Search}
-          title="No entries found"
-          description={
-            activeTab
-              ? `No ${activeTab} entries match your filters. Try a different source or date range.`
-              : 'Start learning — add YouTube videos, LeetCode problems, or manual notes.'
-          }
-        />
-      )}
-
-      {/* Entry list */}
-      {!loading && !error && entries.length > 0 && (
+      {/* ── ENTRIES VIEW ── */}
+      {view === 'entries' && (
         <>
-          <div className="entry-list" style={{ gap: '0.6rem' }}>
-            {entries.map(entry => (
-              <EntryCard
-                key={entry.id}
-                entry={entry}
-                onClick={() => {
-                  if (entry.source_url) window.open(entry.source_url, '_blank', 'noopener');
-                }}
-              />
-            ))}
+          {/* Source tabs + filter toggle */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-md)', flexWrap: 'wrap', gap: '8px' }}>
+            <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+              {SOURCE_TABS.map(({ key, label, icon: Icon }) => (
+                <button
+                  key={String(key)}
+                  type="button"
+                  onClick={() => { setSourceTab(key); setPage(1); }}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '5px',
+                    padding: '5px 12px',
+                    borderRadius: 'var(--radius-full)',
+                    border: `1px solid ${sourceTab === key ? 'var(--primary)' : 'var(--border)'}`,
+                    background: sourceTab === key ? 'var(--primary-light)' : 'var(--bg-surface)',
+                    color: sourceTab === key ? 'var(--primary)' : 'var(--text-muted)',
+                    fontFamily: 'inherit', fontSize: '0.8125rem', fontWeight: 500,
+                    cursor: 'pointer', transition: 'all 0.12s',
+                  }}
+                >
+                  <Icon size={13} />
+                  {label}
+                </button>
+              ))}
+            </div>
+            <button
+              type="button"
+              className="btn-icon"
+              onClick={() => setShowFilter(f => !f)}
+              title="Date filter"
+              style={{ border: showFilter ? '1px solid var(--primary)' : undefined }}
+            >
+              <SlidersHorizontal size={15} color={showFilter ? 'var(--primary)' : undefined} />
+            </button>
           </div>
 
-          {/* Pagination */}
-          {totalPages > 1 && (
+          {/* Date filter row */}
+          {showFilter && (
             <div style={{
-              display: 'flex', justifyContent: 'center', alignItems: 'center',
-              gap: '0.75rem', marginTop: '1.5rem',
+              display: 'flex', gap: '8px', alignItems: 'center',
+              padding: '12px 16px',
+              background: 'var(--bg-surface)',
+              border: '1px solid var(--border)',
+              borderRadius: 'var(--radius-sm)',
+              marginBottom: 'var(--space-md)',
+              flexWrap: 'wrap',
             }}>
-              <button
-                className="btn-secondary"
-                disabled={page === 0}
-                onClick={() => handlePageChange(page - 1)}
-                style={{ opacity: page === 0 ? 0.4 : 1, fontSize: '0.85rem', padding: '0.5rem 1.1rem' }}
-              >
-                ← Prev
-              </button>
-              <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                {page + 1} / {totalPages}
-              </span>
-              <button
-                className="btn-secondary"
-                disabled={page >= totalPages - 1}
-                onClick={() => handlePageChange(page + 1)}
-                style={{ opacity: page >= totalPages - 1 ? 0.4 : 1, fontSize: '0.85rem', padding: '0.5rem 1.1rem' }}
-              >
-                Next →
-              </button>
+              <Calendar size={14} color="var(--text-faint)" />
+              <input
+                type="date"
+                className="glass-input"
+                value={startDate}
+                onChange={e => { setStartDate(e.target.value); setPage(1); }}
+                style={{ width: 'auto', fontSize: '0.8125rem' }}
+              />
+              <span style={{ color: 'var(--text-faint)', fontSize: '0.8125rem' }}>to</span>
+              <input
+                type="date"
+                className="glass-input"
+                value={endDate}
+                onChange={e => { setEndDate(e.target.value); setPage(1); }}
+                style={{ width: 'auto', fontSize: '0.8125rem' }}
+              />
+              {(startDate || endDate) && (
+                <button type="button" className="link-btn" onClick={resetFilters}>Clear</button>
+              )}
+            </div>
+          )}
+
+          {loading ? (
+            <div className="loading-block"><div className="spinner" /><p>Loading entries…</p></div>
+          ) : entries.length === 0 ? (
+            <EmptyState
+              icon={HistoryIcon}
+              title="No entries found"
+              description="Try a different source filter or date range."
+            />
+          ) : (
+            <>
+              <p className="section-label" style={{ marginBottom: 'var(--space-sm)' }}>
+                {total} {total === 1 ? 'entry' : 'entries'}
+              </p>
+              <div className="entry-list">
+                {entries.map(entry => (
+                  <article key={entry.id} className="entry-card">
+                    {entry.source_type === 'youtube' && (
+                      <div className="entry-card__thumb">
+                        {youtubeThumb(entry.source_url)
+                          ? <img src={youtubeThumb(entry.source_url)} alt="" loading="lazy" />
+                          : <Video size={24} style={{ margin: 'auto', display: 'block', paddingTop: '30%', color: 'var(--text-faint)' }} />
+                        }
+                      </div>
+                    )}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                        <SourceBadge type={entry.source_type} />
+                        <span style={{ fontSize: '0.75rem', color: 'var(--text-faint)' }}>
+                          {new Date(entry.created_at || entry.date).toLocaleDateString()}
+                        </span>
+                      </div>
+                      <h3 className="entry-card__title">{entry.title}</h3>
+                      {entry.summary && <p className="entry-card__summary">{entry.summary}</p>}
+                      <div className="topic-tags">
+                        {(entry.topics || []).map((t, i) => (
+                          <span key={i} className="topic-tag">{String(t).trim()}</span>
+                        ))}
+                      </div>
+                    </div>
+                  </article>
+                ))}
+              </div>
+
+              {/* Pagination */}
+              {totalPages > 1 && (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginTop: 'var(--space-xl)' }}>
+                  <button
+                    type="button" className="btn-secondary btn-secondary--sm"
+                    disabled={page === 1}
+                    onClick={() => setPage(p => p - 1)}
+                  >← Prev</button>
+                  <span style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
+                    Page {page} of {totalPages}
+                  </span>
+                  <button
+                    type="button" className="btn-secondary btn-secondary--sm"
+                    disabled={page === totalPages}
+                    onClick={() => setPage(p => p + 1)}
+                  >Next →</button>
+                </div>
+              )}
+            </>
+          )}
+        </>
+      )}
+
+      {/* ── DIARY VIEW ── */}
+      {view === 'diary' && (
+        <>
+          {loading ? (
+            <div className="loading-block"><div className="spinner" /><p>Loading diary…</p></div>
+          ) : diaries.length === 0 ? (
+            <EmptyState
+              icon={BookOpen}
+              title="No diary entries yet"
+              description="Your AI-generated daily journal will appear here each evening."
+            />
+          ) : (
+            <div className="entry-list">
+              {diaries.map(diary => {
+                const label = new Date(diary.date).toLocaleDateString('en-US', {
+                  weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+                });
+                return (
+                  <button
+                    key={diary.id}
+                    type="button"
+                    className="glass-card diary-row"
+                    style={{ width: '100%', border: 'none', textAlign: 'left', color: 'inherit', cursor: 'pointer' }}
+                    onClick={() => navigate(`/diary/${diary.date}`)}
+                  >
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: '0.9375rem', color: 'var(--text-main)' }}>{label}</div>
+                      <div style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', marginTop: '2px' }}>Open journal entry</div>
+                    </div>
+                    <ChevronRight size={18} color="var(--text-faint)" />
+                  </button>
+                );
+              })}
             </div>
           )}
         </>

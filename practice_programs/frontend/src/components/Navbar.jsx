@@ -5,7 +5,7 @@ import {
   LayoutDashboard,
   Search,
   Gamepad2,
-  PlusCircle,
+  Plus,
   History,
   BarChart3,
   LogOut,
@@ -16,11 +16,11 @@ import { useAuth } from '../context/AuthContext';
 import IngestModal from './IngestModal';
 
 const NAV_ITEMS = [
-  { path: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { path: '/search', label: 'Brain', icon: Search },
-  { path: '/quiz', label: 'Quiz', icon: Gamepad2 },
-  { path: '/history', label: 'History', icon: History },
-  { path: '/report', label: 'Report', icon: BarChart3 },
+  { path: '/',        label: 'Dashboard', icon: LayoutDashboard },
+  { path: '/search',  label: 'Search',    icon: Search          },
+  { path: '/quiz',    label: 'Quiz',      icon: Gamepad2        },
+  { path: '/history', label: 'History',   icon: History         },
+  { path: '/report',  label: 'Report',    icon: BarChart3       },
 ];
 
 export default function Navbar() {
@@ -30,65 +30,88 @@ export default function Navbar() {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const closeMobile = () => setMobileOpen(false);
+  const initial = user?.email?.[0]?.toUpperCase() || '?';
 
   return (
     <>
-      <header className="navbar glass-card">
+      <header className="navbar">
         <div className="navbar__inner">
+          {/* Brand */}
           <Link to="/" className="brand" onClick={closeMobile}>
-            <Brain color="var(--primary-glow)" size={26} />
+            <Brain color="var(--primary)" size={20} />
             <span>Productivity Manager</span>
           </Link>
 
-          <nav className={`navbar__nav ${mobileOpen ? 'navbar__nav--open' : ''}`} aria-label="Main">
+          {/* Nav links */}
+          <nav className={`navbar__nav${mobileOpen ? ' navbar__nav--open' : ''}`} aria-label="Main">
             {NAV_ITEMS.map(({ path, label, icon: Icon }) => (
               <Link
                 key={path}
                 to={path}
-                className={`nav-link ${location.pathname === path ? 'nav-link--active' : ''}`}
+                className={`nav-link${location.pathname === path ? ' nav-link--active' : ''}`}
                 onClick={closeMobile}
               >
-                <Icon size={18} aria-hidden />
+                <Icon size={15} aria-hidden />
                 <span>{label}</span>
               </Link>
             ))}
           </nav>
 
+          {/* Right actions */}
           <div className="navbar__actions">
+            {/* Add button */}
             <button
               type="button"
-              className="btn-primary btn-primary--sm navbar__add"
+              className="btn-primary btn-primary--sm"
               onClick={() => setModalOpen(true)}
+              style={{ display: 'flex', alignItems: 'center', gap: '5px' }}
             >
-              <PlusCircle size={16} aria-hidden />
+              <Plus size={14} aria-hidden />
               <span className="navbar__add-label">Add</span>
             </button>
-            <span className="navbar__email" title={user?.email}>
-              {user?.email?.split('@')[0]}
-            </span>
+
+            {/* User avatar */}
+            <div
+              title={user?.email}
+              style={{
+                width: 30, height: 30,
+                borderRadius: '50%',
+                background: 'var(--primary-light)',
+                border: '1px solid rgba(99,102,241,0.25)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: '0.75rem', fontWeight: 700, color: 'var(--primary)',
+                flexShrink: 0, cursor: 'default',
+              }}
+            >
+              {initial}
+            </div>
+
+            {/* Logout */}
             <button
               type="button"
-              className="btn-secondary btn-secondary--sm"
+              className="btn-icon"
               onClick={logout}
               aria-label="Sign out"
+              title="Sign out"
             >
-              <LogOut size={16} />
+              <LogOut size={15} />
             </button>
+
+            {/* Mobile burger */}
             <button
               type="button"
               className="navbar__burger"
-              onClick={() => setMobileOpen((o) => !o)}
+              onClick={() => setMobileOpen(o => !o)}
               aria-label={mobileOpen ? 'Close menu' : 'Open menu'}
               aria-expanded={mobileOpen}
             >
-              {mobileOpen ? <X size={22} /> : <Menu size={22} />}
+              {mobileOpen ? <X size={18} /> : <Menu size={18} />}
             </button>
           </div>
         </div>
       </header>
 
       {mobileOpen && <div className="navbar__backdrop" onClick={closeMobile} aria-hidden />}
-
       {modalOpen && <IngestModal onClose={() => setModalOpen(false)} />}
     </>
   );

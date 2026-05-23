@@ -20,7 +20,8 @@ def get_transcript(video_id: str) -> str:
     Uses the youtube_transcript_api which is a synchronous library — kept sync intentionally.
     """
     try:
-        transcript_list = YouTubeTranscriptApi().list(video_id)
+        # New API: class method, no instantiation needed
+        transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
         try:
             transcript = transcript_list.find_transcript(["en", "en-IN", "en-US", "en-GB"])
         except Exception:
@@ -39,6 +40,7 @@ def get_transcript(video_id: str) -> str:
         )
     except Exception as e:
         raise ValueError(f"Could not fetch transcript: {str(e)}")
+
 
 
 async def get_video_title(video_id: str) -> str:

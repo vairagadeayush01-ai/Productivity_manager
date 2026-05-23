@@ -76,7 +76,24 @@ export const api = {
     const res = await client.get('/search/history', { params });
     return res.data;
   },
+  // Convenience wrapper used by History.jsx (page-based)
+  getHistory: async ({ page = 1, limit = 10, source_type, start_date, end_date } = {}) => {
+    const skip = (page - 1) * limit;
+    const params = { skip, limit };
+    if (source_type) params.source_type = source_type;
+    if (start_date)  params.start_date = start_date;
+    if (end_date)    params.end_date = end_date;
+    const res = await client.get('/search/history', { params });
+    return res.data;
+  },
   searchBrain: async (query, n = 5, source_type = null) => {
+    const params = { q: query, n };
+    if (source_type) params.source_type = source_type;
+    const res = await client.get('/search/', { params });
+    return res.data;
+  },
+  // Convenience alias used by Search.jsx
+  search: async (query, source_type = null, n = 8) => {
     const params = { q: query, n };
     if (source_type) params.source_type = source_type;
     const res = await client.get('/search/', { params });
