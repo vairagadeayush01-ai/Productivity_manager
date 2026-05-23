@@ -1,81 +1,130 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../api';
-import { BarChart3, TrendingUp, Award, Calendar } from 'lucide-react';
+import PageHeader from '../components/PageHeader';
+import StatCard from '../components/StatCard';
+import EmptyState from '../components/EmptyState';
+import { BarChart3, TrendingUp, Award, Calendar, BookOpen } from 'lucide-react';
 
 export default function Report() {
-  const [report, setReport] = useState(null);
+  const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    async function loadReport() {
-      try {
-        const data = await api.getWeeklyReport();
-        setReport(data);
-      } catch (err) {
-        setError("Could not load weekly report. Try again later.");
-      } finally {
-        setLoading(false);
-      }
-    }
-    loadReport();
+    api
+      .getWeeklyReport()
+      .then(setData)
+      .catch(() => setError('Could not load weekly report. Try again later.'))
+      .finally(() => setLoading(false));
   }, []);
 
-  if (loading) return <div style={{ textAlign: 'center', marginTop: '4rem' }}>Generating Weekly Report...</div>;
-  if (error) return <div style={{ textAlign: 'center', marginTop: '4rem', color: 'var(--text-muted)' }}>{error}</div>;
+  if (loading) {
+    return (
+      <div className="page page--centered">
+        <div className="loading-block">
+          <div className="spinner" />
+          <p style={{ color: 'var(--text-muted)' }}>Generating your weekly report…</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="page page--narrow">
+        <EmptyState icon={BarChart3} title="Report unavailable" description={error} />
+      </div>
+    );
+  }
+
+  const stats = data?.stats || {};
+  const report = data?.report || {};
+  const hasActivity = (stats.total_entries || 0) > 0;
+
+  if (!hasActivity) {
+    return (
+      <div className="page page--narrow">
+        <PageHeader icon={BarChart3} iconColor="#fbbf24" iconBg="rgba(245,158,11,0.15)" title="Weekly report" subtitle={data?.message || 'No activity this week yet.'} />
+        <EmptyState
+          icon={BookOpen}
+          title="No data this week"
+          description="Log learning entries, solve problems, or sync GitHub — your report card will appear here next Sunday."
+        />
+      </div>
+    );
+  }
 
   return (
-    <div className="animate-fade-in" style={{ maxWidth: '900px', margin: '0 auto' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '3rem' }}>
-        <div style={{ padding: '1rem', background: 'rgba(245, 158, 11, 0.2)', borderRadius: '12px' }}>
-          <BarChart3 color="#f59e0b" size={28} />
-        </div>
-        <div>
-          <h1 style={{ fontSize: '2rem' }}>Weekly Progress Report</h1>
-          <p style={{ color: 'var(--text-muted)' }}>Your learning analytics and streaks for the past 7 days.</p>
-        </div>
+    <div className="page page--narrow">
+      <PageHeader
+        icon={BarChart3}
+        iconColor="#fbbf24"
+        iconBg="rgba(245,158,11,0.15)"
+        title="Weekly progress"
+        subtitle={`Report for week ending ${data?.date || 'today'}`}
+      />
+
+      <div className="stat-grid">
+        <StatCard
+          icon={TrendingUp}
+          iconColor="var(--primary-glow)"
+          iconBg="rgba(99,102,241,0.2)"
+          label="Entries this week"
+          value={stats.total_entries ?? 0}
+        />
+        <StatCard
+          icon={Award}
+          iconColor="var(--success)"
+          iconBg="rgba(52,211,153,0.15)"
+          label="Quiz accuracy"
+          value={`${stats.quiz_accuracy ?? 0}%`}
+        />
+        <StatCard
+          icon={Calendar}
+          iconColor="var(--secondary-glow)"
+          iconBg="rgba(192,132,252,0.15)"
+          label="Active days"
+          value={`${stats.active_days ?? 0} / 7`}
+        />
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1.5rem', marginBottom: '3rem' }}>
-        
-        <div className="glass-card" style={{ padding: '1.5rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <div style={{ padding: '1rem', background: 'rgba(99, 102, 241, 0.2)', borderRadius: '12px' }}>
-            <TrendingUp color="var(--primary-glow)" size={24} />
-          </div>
-          <div>
-            <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>New Entries This Week</div>
-            <div style={{ fontSize: '1.8rem', fontWeight: 600 }}>{report.new_entries}</div>
-          </div>
-        </div>
-
-        <div className="glass-card" style={{ padding: '1.5rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <div style={{ padding: '1rem', background: 'rgba(34, 197, 94, 0.2)', borderRadius: '12px' }}>
-            <Award color="#22c55e" size={24} />
-          </div>
-          <div>
-            <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Quiz Accuracy</div>
-            <div style={{ fontSize: '1.8rem', fontWeight: 600 }}>{report.quiz_accuracy_pct.toFixed(0)}%</div>
-          </div>
-        </div>
-
-        <div className="glass-card" style={{ padding: '1.5rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <div style={{ padding: '1rem', background: 'rgba(168, 85, 247, 0.2)', borderRadius: '12px' }}>
-            <Calendar color="var(--secondary-glow)" size={24} />
-          </div>
-          <div>
-            <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Topics Reviewed</div>
-            <div style={{ fontSize: '1.8rem', fontWeight: 600 }}>{report.topics_reviewed}</div>
-          </div>
-        </div>
-
+      <div className="report-grid">
+        {report.overall && (
+          <section className="report-section glass-card">
+            <h3>Overview</h3>
+            <p>{report.overall}</p>
+          </section>
+        )}
+        {report.strong_areas && (
+          <section className="report-section glass-card">
+            <h3>Strong areas</h3>
+            <p>{report.strong_areas}</p>
+          </section>
+        )}
+        {report.needs_attention && (
+          <section className="report-section glass-card">
+            <h3>Needs attention</h3>
+            <p>{report.needs_attention}</p>
+          </section>
+        )}
+        {report.next_week && (
+          <section className="report-section glass-card">
+            <h3>Next week</h3>
+            <p>{report.next_week}</p>
+          </section>
+        )}
       </div>
 
-      <div className="glass-card" style={{ padding: '2.5rem' }}>
-        <h2 style={{ marginBottom: '1.5rem', fontSize: '1.5rem', color: 'var(--accent-color)' }}>AI Analysis</h2>
-        <p style={{ color: 'var(--text-main)', fontSize: '1.1rem', lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>
-          {report.report}
-        </p>
-      </div>
+      {stats.top_topics?.length > 0 && (
+        <div className="glass-card" style={{ padding: '1.25rem', marginTop: '1.5rem' }}>
+          <h3 className="section-title" style={{ marginBottom: '0.75rem', fontSize: '1rem' }}>Top topics</h3>
+          <div className="topic-tags">
+            {stats.top_topics.map((t) => (
+              <span key={t} className="topic-tag">{t}</span>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

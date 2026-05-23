@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { api } from '../api';
-import { X } from 'lucide-react';
+import { X, CheckCircle2, Video, PenLine } from 'lucide-react';
 
 export default function IngestModal({ onClose }) {
   const [type, setType] = useState('youtube');
@@ -8,63 +8,94 @@ export default function IngestModal({ onClose }) {
   const [note, setNote] = useState('');
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [error, setError] = useState('');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
+    setError('');
     try {
       if (type === 'youtube') await api.ingestYoutube(url);
       if (type === 'log') await api.ingestLog(note);
       setSuccess(true);
-      setTimeout(onClose, 2000);
+      setTimeout(onClose, 1800);
     } catch (err) {
-      alert("Error: " + (err.response?.data?.detail || err.message));
+      setError(err.response?.data?.detail || err.message || 'Ingest failed');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div style={{
-      position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-      background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100
-    }}>
-      <div className="glass-card animate-fade-in" style={{ width: '100%', maxWidth: '500px', padding: '2rem', position: 'relative' }}>
-        <button onClick={onClose} style={{ position: 'absolute', top: '1.5rem', right: '1.5rem', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}>
-          <X size={24} />
+    <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="ingest-title">
+      <div className="modal glass-card animate-fade-in">
+        <button type="button" className="modal__close" onClick={onClose} aria-label="Close">
+          <X size={20} />
         </button>
-        
-        <h2 style={{ marginBottom: '1.5rem' }}>Add New Learning Entry</h2>
+
+        <h2 id="ingest-title" className="page-title" style={{ fontSize: '1.25rem', marginBottom: '1.25rem' }}>
+          Add learning entry
+        </h2>
 
         {success ? (
-          <div style={{ textAlign: 'center', padding: '2rem 0', color: '#22c55e' }}>
-            <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>✓</div>
-            Successfully ingested and summarized!
+          <div className="empty-state" style={{ padding: '2rem 0' }}>
+            <CheckCircle2 size={48} color="var(--success)" style={{ margin: '0 auto 1rem' }} />
+            <p style={{ color: 'var(--success)', fontWeight: 600 }}>Saved and summarized!</p>
           </div>
         ) : (
           <form onSubmit={handleSubmit}>
-            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem' }}>
-              <button type="button" className={type === 'youtube' ? 'btn-primary' : 'btn-secondary'} onClick={() => setType('youtube')} style={{ flex: 1 }}>YouTube</button>
-              <button type="button" className={type === 'log' ? 'btn-primary' : 'btn-secondary'} onClick={() => setType('log')} style={{ flex: 1 }}>Manual Note</button>
+            <div className="modal-tabs">
+              <button
+                type="button"
+                className={type === 'youtube' ? 'btn-primary' : 'btn-secondary'}
+                onClick={() => setType('youtube')}
+              >
+                <Video size={16} /> YouTube
+              </button>
+              <button
+                type="button"
+                className={type === 'log' ? 'btn-primary' : 'btn-secondary'}
+                onClick={() => setType('log')}
+              >
+                <PenLine size={16} /> Note
+              </button>
             </div>
 
+            {error && <div className="auth-error" style={{ marginBottom: '1rem' }}>{error}</div>}
+
             {type === 'youtube' && (
-              <div style={{ marginBottom: '2rem' }}>
-                <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-muted)', fontSize: '0.9rem' }}>YouTube URL</label>
-                <input type="url" required className="glass-input" placeholder="https://youtube.com/watch?v=..." value={url} onChange={e => setUrl(e.target.value)} />
+              <div className="form-field">
+                <label className="form-label" htmlFor="yt-url">YouTube URL</label>
+                <input
+                  id="yt-url"
+                  type="url"
+                  required
+                  className="glass-input"
+                  placeholder="https://youtube.com/watch?v=..."
+                  value={url}
+                  onChange={(e) => setUrl(e.target.value)}
+                />
               </div>
             )}
 
             {type === 'log' && (
-              <div style={{ marginBottom: '2rem' }}>
-                <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-muted)', fontSize: '0.9rem' }}>Your Notes</label>
-                <textarea required className="glass-input" rows={5} placeholder="What did you learn today?" value={note} onChange={e => setNote(e.target.value)} style={{ resize: 'vertical' }} />
+              <div className="form-field">
+                <label className="form-label" htmlFor="note">Your notes</label>
+                <textarea
+                  id="note"
+                  required
+                  className="glass-input"
+                  rows={5}
+                  placeholder="What did you learn today?"
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                  style={{ resize: 'vertical' }}
+                />
               </div>
             )}
 
             <button type="submit" className="btn-primary" style={{ width: '100%' }} disabled={loading}>
-              {loading ? 'Processing AI Summary...' : 'Ingest to Second Brain'}
+              {loading ? 'Summarizing with AI…' : 'Save to Second Brain'}
             </button>
           </form>
         )}

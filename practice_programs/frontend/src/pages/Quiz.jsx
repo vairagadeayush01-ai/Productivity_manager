@@ -53,6 +53,14 @@ export default function Quiz() {
   }, [topicParam]);
 
   async function generateQuiz() {
+    const label = topicParam ? `topic review for "${topicParam}"` : "today's learning";
+    if (
+      !window.confirm(
+        `Start a ${difficulty} quiz with ${numQuestions} questions from ${label}? This uses your Groq API quota.`
+      )
+    ) {
+      return;
+    }
     setLoading(true);
     setError(null);
     setGenerated(false);
@@ -114,7 +122,7 @@ export default function Quiz() {
   // -- Render: Setup screen (before quiz generated) ----------
   if (!generated && !loading) {
     return (
-      <div className="animate-fade-in" style={{ maxWidth: '700px', margin: '0 auto' }}>
+      <div className="page page--narrow">
         <div style={{ display: 'flex', gap: '1rem', marginBottom: '2rem' }}>
           <button
             className={!showPerf ? 'btn-primary' : 'btn-secondary'}
@@ -220,14 +228,12 @@ export default function Quiz() {
   // -- Render: Loading ---------------------------------------
   if (loading) {
     return (
-      <div className="animate-fade-in" style={{ textAlign: 'center', marginTop: '5rem' }}>
-        <div style={{
-          width: '60px', height: '60px', border: '3px solid rgba(99,102,241,0.2)',
-          borderTopColor: 'var(--primary-glow)', borderRadius: '50%',
-          margin: '0 auto 1.5rem', animation: 'spin 1s linear infinite'
-        }} />
+      <div className="page page--narrow page--centered">
+        <div className="loading-block">
+        <div className="spinner" style={{ width: '3rem', height: '3rem' }} />
         <h2 style={{ marginBottom: '0.5rem' }}>Generating your quiz...</h2>
-        <p style={{ color: 'var(--text-muted)' }}>AI is crafting {numQuestions} {difficulty} questions...</p>
+        <p style={{ color: 'var(--text-muted)' }}>AI is crafting {numQuestions} {difficulty} questions…</p>
+        </div>
       </div>
     );
   }
@@ -241,8 +247,8 @@ export default function Quiz() {
                 : { label: 'Keep practicing!', color: '#ef4444' };
     return (
       <div className="glass-card animate-fade-in" style={{ padding: '3rem 2rem', textAlign: 'center', maxWidth: '600px', margin: '0 auto' }}>
-        <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>
-          {pct >= 80 ? '?' : pct >= 60 ? '?' : '?'}
+        <div style={{ fontSize: '3rem', marginBottom: '1rem', display: 'flex', justifyContent: 'center' }}>
+          {pct >= 80 ? <Trophy size={48} color="#22c55e" /> : pct >= 60 ? <Target size={48} color="#f59e0b" /> : <AlertTriangle size={48} color="#ef4444" />}
         </div>
         <h2 style={{ fontSize: '1.8rem', marginBottom: '0.5rem' }}>Quiz Complete!</h2>
         <p style={{ color: grade.color, fontSize: '1.1rem', fontWeight: 600, marginBottom: '1.5rem' }}>{grade.label}</p>
@@ -268,7 +274,7 @@ export default function Quiz() {
                 background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)'
               }}>
                 <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '4px' }}>{a.q.question}</p>
-                <p style={{ fontSize: '0.82rem', color: '#22c55e' }}>? {a.q.answer}</p>
+                <p style={{ fontSize: '0.82rem', color: '#22c55e', display: 'flex', alignItems: 'center', gap: '4px' }}><CheckCircle2 size={14} /> {a.q.answer}</p>
                 {a.q.explanation && <p style={{ fontSize: '0.78rem', color: '#94a3b8', marginTop: '2px' }}>{a.q.explanation}</p>}
               </div>
             ))}
@@ -388,7 +394,10 @@ export default function Quiz() {
             border: `1px solid ${feedback === 'correct' ? 'rgba(34,197,94,0.2)' : 'rgba(239,68,68,0.2)'}`,
             fontSize: '0.88rem', color: 'var(--text-muted)', lineHeight: 1.6
           }}>
-            ? {q.explanation}
+            <div style={{ display: 'flex', gap: '6px', alignItems: 'flex-start' }}>
+              <Zap size={16} style={{ marginTop: '2px', flexShrink: 0, color: feedback === 'correct' ? '#22c55e' : '#ef4444' }} />
+              <span>{q.explanation}</span>
+            </div>
           </div>
         )}
 
@@ -408,7 +417,7 @@ export default function Quiz() {
               onClick={handleNext}
               style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
             >
-              {currentIdx + 1 < quizData.total ? <><ChevronRight size={18} />Next Question</> : <>See Results ?</>}
+              {currentIdx + 1 < quizData.total ? <><ChevronRight size={18} />Next Question</> : <>See Results <BarChart3 size={18} /></>}
             </button>
           )}
         </div>

@@ -1,4 +1,14 @@
+# Secrets — never commit these
 .env
+.env.local
+.env.*.local
+practice_programs/backend/.env
+practice_programs/frontend/.env
+practice_programs/frontend/.env.local
+
+# Templates are OK to commit (placeholders only, no real keys)
+# practice_programs/backend/.env.example
+# practice_programs/frontend/.env.example
 __pycache__/
 *.py[cod]
 .venv/

@@ -1,27 +1,22 @@
 """
-leetcode_service.py  — fetches today's accepted LeetCode submissions.
-
-Your original script worked well. The GraphQL endpoint is valid and returns real data.
-Changes made:
-  1. Error handling — API failures, empty responses, network errors
-  2. USERNAME from .env instead of hardcoded
-  3. Added difficulty and tags to the GraphQL query (you were only fetching title)
-  4. Returns structured data for FastAPI instead of printing
-  5. Added a User-Agent header — LeetCode occasionally blocks bare requests without one
+leetcode_today.py — fetches today's accepted LeetCode submissions (async HTTP).
 """
 
+import logging
 import os
-import httpx
 from datetime import datetime
+
+import httpx
 from dotenv import load_dotenv
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 LEETCODE_USERNAME = os.getenv("LEETCODE_USERNAME", "")
 
 GRAPHQL_URL = "https://leetcode.com/graphql"
 
-# Extended query — also fetches the problem's difficulty and topic tags
 QUERY = """
 query recentAcSubmissions($username: String!) {
   recentAcSubmissionList(username: $username) {
@@ -32,7 +27,6 @@ query recentAcSubmissions($username: String!) {
 }
 """
 
-# Separate query to get difficulty + tags from a problem slug
 PROBLEM_QUERY = """
 query problemDetail($titleSlug: String!) {
   question(titleSlug: $titleSlug) {
@@ -49,49 +43,41 @@ _HEADERS = {
 }
 
 
-def _get_problem_detail(slug: str) -> dict:
+async def get_problem_detail(slug: str) -> dict:
     """Fetches difficulty and tags for a problem slug. Returns {} on failure."""
     try:
-        r = httpx.post(
-            GRAPHQL_URL,
-            json={"query": PROBLEM_QUERY, "variables": {"titleSlug": slug}},
-            headers=_HEADERS,
-            timeout=8
-        )
+        async with httpx.AsyncClient() as client:
+            r = await client.post(
+                GRAPHQL_URL,
+                json={"query": PROBLEM_QUERY, "variables": {"titleSlug": slug}},
+                headers=_HEADERS,
+                timeout=8,
+            )
         q = r.json().get("data", {}).get("question") or {}
         return {
             "difficulty": q.get("difficulty", "Unknown"),
-            "tags": [t["name"] for t in q.get("topicTags", [])]
+            "tags": [t["name"] for t in q.get("topicTags", [])],
         }
-    except Exception:
+    except Exception as e:
+        logger.debug("Problem detail fetch failed for %s: %s", slug, e)
         return {"difficulty": "Unknown", "tags": []}
 
 
-def fetch_today_submissions() -> dict:
+async def fetch_today_submissions() -> dict:
     """
     Fetches today's accepted LeetCode submissions for the configured user.
-    Returns:
-      {
-        "username": str,
-        "date": str,
-        "problems": [
-            {"title": str, "slug": str, "difficulty": str, "tags": [str]}
-        ],
-        "total_solved": int,
-        "summary_text": str    # sent to Gemini for summarization
-      }
-    Raises ValueError on config or network errors.
     """
     if not LEETCODE_USERNAME:
         raise ValueError("LEETCODE_USERNAME not set in .env")
 
     try:
-        response = httpx.post(
-            GRAPHQL_URL,
-            json={"query": QUERY, "variables": {"username": LEETCODE_USERNAME}},
-            headers=_HEADERS,
-            timeout=12
-        )
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                GRAPHQL_URL,
+                json={"query": QUERY, "variables": {"username": LEETCODE_USERNAME}},
+                headers=_HEADERS,
+                timeout=12,
+            )
     except httpx.TimeoutException:
         raise ValueError("LeetCode API timed out.")
     except Exception as e:
@@ -105,7 +91,6 @@ def fetch_today_submissions() -> dict:
     except Exception:
         raise ValueError("LeetCode returned unexpected data.")
 
-    # Handle "user not found" or private profile
     if "errors" in data:
         msg = data["errors"][0].get("message", "Unknown error")
         raise ValueError(f"LeetCode error: {msg}")
@@ -123,19 +108,20 @@ def fetch_today_submissions() -> dict:
             continue
 
         title = sub.get("title", "")
-        slug  = sub.get("titleSlug", "")
+        slug = sub.get("titleSlug", "")
 
         if sub_date == today and title not in seen:
             seen.add(title)
-            detail = _get_problem_detail(slug)
-            problems.append({
-                "title":      title,
-                "slug":       slug,
-                "difficulty": detail["difficulty"],
-                "tags":       detail["tags"],
-            })
+            detail = await get_problem_detail(slug)
+            problems.append(
+                {
+                    "title": title,
+                    "slug": slug,
+                    "difficulty": detail["difficulty"],
+                    "tags": detail["tags"],
+                }
+            )
 
-    # Build summary text for Gemini
     lines = [f"LeetCode activity for {LEETCODE_USERNAME} on {today}:"]
     if problems:
         lines.append(f"Solved {len(problems)} problem(s) today:")
@@ -146,9 +132,9 @@ def fetch_today_submissions() -> dict:
         lines.append("No problems solved today.")
 
     return {
-        "username":     LEETCODE_USERNAME,
-        "date":         today.isoformat(),
-        "problems":     problems,
+        "username": LEETCODE_USERNAME,
+        "date": today.isoformat(),
+        "problems": problems,
         "total_solved": len(problems),
         "summary_text": "\n".join(lines),
     }

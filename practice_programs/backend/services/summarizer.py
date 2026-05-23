@@ -1,22 +1,26 @@
-import os
 import json
-from groq import Groq
+import logging
+import os
+
 from dotenv import load_dotenv
+from groq import Groq
+from tenacity import retry, stop_after_attempt, wait_exponential
 
 load_dotenv()
 
+logger = logging.getLogger(__name__)
 client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
-# llama-3.3-70b-versatile is free, fast, and very capable for summarization
 MODEL = "llama-3.3-70b-versatile"
 
 
+@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
 def _call_groq(prompt: str) -> str:
-    """Sends a prompt to Groq and returns the raw text response."""
+    """Sends a prompt to Groq with retries on transient failures."""
     response = client.chat.completions.create(
         model=MODEL,
         messages=[{"role": "user", "content": prompt}],
-        temperature=0.3,   # low temperature = consistent, structured output
+        temperature=0.3,
         max_tokens=1024,
     )
     return response.choices[0].message.content.strip()
@@ -35,7 +39,7 @@ def _parse_json(text: str) -> dict:
 
 def summarize_transcript(text: str, title: str = "") -> dict:
     """
-    Summarizes any long text (YouTube transcript, PDF, webpage).
+    Summarizes any long text (YouTube transcript, PDF, webpage, or activity logs).
     Returns: { summary, topics[], key_concepts[] }
     """
     # Groq context window is large but let's keep requests reasonable
@@ -52,7 +56,7 @@ Content:
 
 Return ONLY valid JSON with this exact structure (no markdown, no backticks, no extra text):
 {{
-  "summary": "A clear 3-5 sentence summary of what was taught. Write it as if explaining to the student what they just learned.",
+  "summary": "A clear 3-5 sentence summary. CRITICAL: If the content is a list of LeetCode problems, GitHub commits, or specific activities, you MUST explicitly state the exact names of the problems solved or repositories touched. Do not generalize.",
   "topics": ["topic1", "topic2", "topic3"],
   "key_concepts": [
     {{"concept": "name", "explanation": "one sentence"}},
@@ -96,9 +100,13 @@ The student has completed the following learning activities today:
 {entries_text}
 
 Write a comprehensive, engaging, and cohesive diary entry summarizing everything they learned today. 
-The summary should read like a personal journal entry (e.g., "Today, you made great progress! You tackled X and learned about Y...").
-Make it brief but comprehensive, covering all the individual topics and concepts they touched upon.
-Use paragraphs to make it readable. Do not output JSON. Do not use markdown headers. 
-Just write the diary entry text."""
+The summary should read like a personal journal entry.
+CRITICAL INSTRUCTIONS:
+- You must be HIGHLY SPECIFIC. Do not use generic phrases like "you solved 6 problems". 
+- You MUST explicitly name the exact problems solved, the specific repositories committed to, and the precise concepts learned.
+- Structure it chronologically. For example: "Today started with a focus on [Specific Topic/Repo], where you... Then, you moved on to solve [Problem A] and [Problem B], which reinforced your understanding of [Concept]..."
+- Make it feel like a rich, detailed narrative of their specific accomplishments today.
+
+Use paragraphs to make it readable. Do not output JSON. Do not use markdown headers. Just write the diary entry text."""
 
     return _call_groq(prompt)

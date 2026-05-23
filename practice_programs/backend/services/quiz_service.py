@@ -9,11 +9,11 @@ client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 MODEL  = "llama-3.3-70b-versatile"
 
 
-def _call_groq(prompt: str, max_tokens: int = 4096) -> str:
+def _call_groq(prompt: str, max_tokens: int = 4096, temperature: float = 0.8) -> str:
     response = client.chat.completions.create(
         model=MODEL,
         messages=[{"role": "user", "content": prompt}],
-        temperature=0.5,
+        temperature=temperature,
         max_tokens=max_tokens,
     )
     return response.choices[0].message.content.strip()
@@ -91,6 +91,7 @@ STRICT RULES:
 - Cover ALL topics — distribute questions proportionally across topics
 - Wrong options should be plausible/tricky, not obviously wrong
 - Include "why" and "how" questions, not just "what"
+- HIGH VARIETY: You must generate novel, highly unique questions every time. Focus on different sub-topics, obscure details, and avoid typical predictable questions.
 - No two questions should test the same fact
 - Vary question styles: concept explanation, code behavior, tradeoff comparison, error identification
 
@@ -125,7 +126,16 @@ Return ONLY a valid JSON array:
         extra = _parse_json_list(_call_groq(retry_prompt, max_tokens=4000))
         questions.extend(extra[:remaining])
 
-    return questions
+    # Deduplicate questions by question text
+    seen = set()
+    unique_questions = []
+    for q in questions:
+        q_text = q.get("question", "").strip().lower()
+        if q_text and q_text not in seen:
+            seen.add(q_text)
+            unique_questions.append(q)
+            
+    return unique_questions
 
 
 def generate_topic_quiz(topic: str, context: str, n_questions: int = 10, difficulty: str = "medium") -> list[dict]:

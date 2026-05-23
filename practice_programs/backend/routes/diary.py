@@ -1,87 +1,141 @@
-from fastapi import APIRouter, Depends, BackgroundTasks
-from sqlalchemy.orm import Session
-from datetime import date as date_type
-from database import get_db, DailyDiary, LearningEntry
-from services import summarizer
-import os
+import logging
+from datetime import date as date_type, datetime
 
+from fastapi import APIRouter, BackgroundTasks, Depends
+from sqlalchemy.orm import Session
+
+from core.deps import get_current_user
+from database import DailyDiary, LearningEntry, User, get_db
+from services import summarizer
+
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/diary", tags=["diary"])
 
-def generate_diary_for_date(db: Session, target_date: str):
-    """Background task to generate diary for a specific date if it doesn't exist."""
-    # Check if already exists
-    existing = db.query(DailyDiary).filter(DailyDiary.date == target_date).first()
+
+def _date_range(target_date: str) -> tuple[datetime, datetime]:
+    d = date_type.fromisoformat(target_date)
+    return datetime.combine(d, datetime.min.time()), datetime.combine(d, datetime.max.time())
+
+
+def generate_diary_for_date(db: Session, user_id: int, target_date: str):
+    d = date_type.fromisoformat(target_date)
+    existing = (
+        db.query(DailyDiary)
+        .filter(DailyDiary.user_id == user_id, DailyDiary.date == d)
+        .first()
+    )
     if existing:
         return
-    
-    # Get all entries for this date
-    entries = db.query(LearningEntry).filter(
-        LearningEntry.created_at >= f"{target_date} 00:00:00",
-        LearningEntry.created_at <= f"{target_date} 23:59:59"
-    ).order_by(LearningEntry.created_at.asc()).all()
+
+    start, end = _date_range(target_date)
+    entries = (
+        db.query(LearningEntry)
+        .filter(
+            LearningEntry.user_id == user_id,
+            LearningEntry.created_at >= start,
+            LearningEntry.created_at <= end,
+        )
+        .order_by(LearningEntry.created_at.asc())
+        .all()
+    )
 
     if not entries:
         return
 
-    # Combine text
     combined_text = ""
     for idx, e in enumerate(entries):
-        combined_text += f"{idx+1}. [{e.source_type.upper()}] {e.title}\nSummary: {e.summary}\nTopics: {e.topics}\n\n"
+        combined_text += (
+            f"{idx+1}. [{e.source_type.upper()}] {e.title}\n"
+            f"Summary: {e.summary}\nTopics: {e.topics}\n\n"
+        )
 
     try:
         diary_summary = summarizer.summarize_daily_diary(combined_text, target_date)
-        
-        diary_entry = DailyDiary(
-            date=date_type.fromisoformat(target_date),
-            summary=diary_summary
-        )
-        db.add(diary_entry)
+        db.add(DailyDiary(user_id=user_id, date=d, summary=diary_summary))
         db.commit()
-    except Exception as e:
-        print(f"Failed to generate daily diary for {target_date}: {e}")
+    except Exception:
+        logger.exception("Failed to generate daily diary for user %s on %s", user_id, target_date)
         db.rollback()
 
 
 @router.get("/")
-async def get_diaries(background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
-    """Fetch all daily diaries, ordered by date."""
-    
-    # First, let's trigger a background job to generate today's diary if it's not generated yet
-    # Or actually, we should just let them fetch, and we can generate on the fly for today
-    # But to prevent blocking, we'll trigger generation for today in the background, 
-    # so next time they refresh it's there. 
-    # Or, for better UX, if today is missing, we could generate it synchronously if there are entries.
-    
+async def get_diaries(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     today_str = date_type.today().isoformat()
-    existing_today = db.query(DailyDiary).filter(DailyDiary.date == today_str).first()
-    
-    # Check if we have entries today, and if the diary doesn't exist, we can generate it immediately
-    if not existing_today:
-        entries = db.query(LearningEntry).filter(
-            LearningEntry.created_at >= f"{today_str} 00:00:00"
-        ).count()
-        if entries > 0:
-            generate_diary_for_date(db, today_str)
+    d = date_type.fromisoformat(today_str)
+    existing_today = (
+        db.query(DailyDiary)
+        .filter(DailyDiary.user_id == current_user.id, DailyDiary.date == d)
+        .first()
+    )
 
-    diaries = db.query(DailyDiary).order_by(DailyDiary.date.desc()).all()
-    
-    return {"diaries": [
-        {"id": d.id, "date": d.date.isoformat(), "summary": d.summary, "created_at": d.created_at.isoformat()}
-        for d in diaries
-    ]}
+    if not existing_today:
+        start, _ = _date_range(today_str)
+        count = (
+            db.query(LearningEntry)
+            .filter(
+                LearningEntry.user_id == current_user.id,
+                LearningEntry.created_at >= start,
+            )
+            .count()
+        )
+        if count > 0:
+            generate_diary_for_date(db, current_user.id, today_str)
+
+    diaries = (
+        db.query(DailyDiary)
+        .filter(DailyDiary.user_id == current_user.id)
+        .order_by(DailyDiary.date.desc())
+        .all()
+    )
+
+    return {
+        "diaries": [
+            {
+                "id": diary.id,
+                "date": diary.date.isoformat(),
+                "summary": diary.summary,
+                "created_at": diary.created_at.isoformat(),
+            }
+            for diary in diaries
+        ]
+    }
 
 
 @router.get("/{target_date}")
-async def get_diary(target_date: str, db: Session = Depends(get_db)):
-    """Fetch a specific daily diary."""
-    diary = db.query(DailyDiary).filter(DailyDiary.date == target_date).first()
-    
-    # If not found, try to generate it
+async def get_diary(
+    target_date: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    d = date_type.fromisoformat(target_date)
+    diary = (
+        db.query(DailyDiary)
+        .filter(DailyDiary.user_id == current_user.id, DailyDiary.date == d)
+        .first()
+    )
+
     if not diary:
-        generate_diary_for_date(db, target_date)
-        diary = db.query(DailyDiary).filter(DailyDiary.date == target_date).first()
-        
+        generate_diary_for_date(db, current_user.id, target_date)
+        diary = (
+            db.query(DailyDiary)
+            .filter(DailyDiary.user_id == current_user.id, DailyDiary.date == d)
+            .first()
+        )
+
     if not diary:
-        return {"id": None, "date": target_date, "summary": "No activities found for this date.", "created_at": None}
-        
-    return {"id": diary.id, "date": diary.date.isoformat(), "summary": diary.summary, "created_at": diary.created_at.isoformat()}
+        return {
+            "id": None,
+            "date": target_date,
+            "summary": "No activities found for this date.",
+            "created_at": None,
+        }
+
+    return {
+        "id": diary.id,
+        "date": diary.date.isoformat(),
+        "summary": diary.summary,
+        "created_at": diary.created_at.isoformat(),
+    }

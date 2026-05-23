@@ -1,23 +1,20 @@
 """
-github_service.py  — fetches today's GitHub activity and stores it as a learning entry.
-
-Your original script worked correctly. Changes made:
-  1. Added error handling (network failures, rate limits, unexpected API shape)
-  2. Reads USERNAME from .env instead of hardcoding it
-  3. Also captures CreateEvents (new repos) and IssuesEvents — not just commits
-  4. Returns structured data instead of printing, so FastAPI can use it
-  5. Added an optional GitHub token — raises rate limit from 60 to 5000 req/hr
+git_hub_today.py — fetches today's GitHub activity (async HTTP).
 """
 
+import logging
 import os
+from datetime import UTC, datetime
+
 import httpx
-from datetime import datetime, UTC
 from dotenv import load_dotenv
 
 load_dotenv()
 
+logger = logging.getLogger(__name__)
+
 GITHUB_USERNAME = os.getenv("GITHUB_USERNAME", "")
-GITHUB_TOKEN    = os.getenv("GITHUB_TOKEN", "")   # optional but recommended
+GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")
 
 
 def _headers() -> dict:
@@ -27,20 +24,9 @@ def _headers() -> dict:
     return h
 
 
-def fetch_today_activity() -> dict:
+async def fetch_today_activity() -> dict:
     """
     Hits the GitHub events API and filters to today's activity.
-    Returns a dict:
-      {
-        "username": str,
-        "date": str,           # YYYY-MM-DD
-        "commits": [{"repo": str, "message": str}],
-        "repos_touched": [str],
-        "new_repos": [str],
-        "total_commits": int,
-        "summary_text": str    # human-readable, sent to Gemini
-      }
-    Raises ValueError if the username isn't set or the API fails.
     """
     if not GITHUB_USERNAME:
         raise ValueError("GITHUB_USERNAME not set in .env")
@@ -48,12 +34,15 @@ def fetch_today_activity() -> dict:
     url = f"https://api.github.com/users/{GITHUB_USERNAME}/events"
 
     try:
-        response = httpx.get(url, headers=_headers(), timeout=10)
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url, headers=_headers(), timeout=10)
     except httpx.TimeoutException:
         raise ValueError("GitHub API timed out. Check your connection.")
 
     if response.status_code == 403:
-        raise ValueError("GitHub API rate limit hit. Add a GITHUB_TOKEN to your .env to raise the limit.")
+        raise ValueError(
+            "GitHub API rate limit hit. Add a GITHUB_TOKEN to your .env to raise the limit."
+        )
     if response.status_code == 404:
         raise ValueError(f"GitHub user '{GITHUB_USERNAME}' not found.")
     if response.status_code != 200:
@@ -69,15 +58,17 @@ def fetch_today_activity() -> dict:
 
     today = datetime.now(UTC).date()
 
-    commits      = []
-    new_repos    = []
-    repos_seen   = set()
+    commits = []
+    new_repos = []
+    repos_seen = set()
 
     for event in events:
         try:
-            event_date = datetime.strptime(
-                event["created_at"], "%Y-%m-%dT%H:%M:%SZ"
-            ).replace(tzinfo=UTC).date()
+            event_date = (
+                datetime.strptime(event["created_at"], "%Y-%m-%dT%H:%M:%SZ")
+                .replace(tzinfo=UTC)
+                .date()
+            )
         except (KeyError, ValueError):
             continue
 
@@ -89,17 +80,20 @@ def fetch_today_activity() -> dict:
         event_type = event.get("type", "")
 
         if event_type == "PushEvent":
-            for commit in event.get("payload", {}).get("commits", []):
-                msg = commit.get("message", "").strip()
-                if msg:
-                    commits.append({"repo": repo_name, "message": msg})
+            payload_commits = event.get("payload", {}).get("commits", [])
+            if payload_commits:
+                for commit in payload_commits:
+                    msg = commit.get("message", "").strip()
+                    if msg:
+                        commits.append({"repo": repo_name, "message": msg})
+            else:
+                commits.append({"repo": repo_name, "message": "Pushed updates to repository"})
 
         elif event_type == "CreateEvent":
             ref_type = event.get("payload", {}).get("ref_type", "")
             if ref_type == "repository":
                 new_repos.append(repo_name)
 
-    # Build a plain-English summary for Gemini to summarize
     lines = [f"GitHub activity for {GITHUB_USERNAME} on {today}:"]
     if commits:
         lines.append(f"\nCommits ({len(commits)}):")
@@ -111,11 +105,11 @@ def fetch_today_activity() -> dict:
         lines.append("No push or create activity today.")
 
     return {
-        "username":      GITHUB_USERNAME,
-        "date":          today.isoformat(),
-        "commits":       commits,
+        "username": GITHUB_USERNAME,
+        "date": today.isoformat(),
+        "commits": commits,
         "repos_touched": sorted(repos_seen),
-        "new_repos":     new_repos,
+        "new_repos": new_repos,
         "total_commits": len(commits),
-        "summary_text":  "\n".join(lines),
+        "summary_text": "\n".join(lines),
     }
