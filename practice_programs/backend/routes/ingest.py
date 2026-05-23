@@ -92,6 +92,10 @@ async def sync_youtube_tracking(
 
     if existing:
         existing.metadata_json = json.dumps(metadata_dict)
+        # Generate a summary from metadata if not already present
+        if not existing.summary:
+            existing.summary = f"Watched: {req.title} by {req.channel} ({req.completion}% watched)"
+            existing.topics = "youtube,tutorial"
         db.commit()
         return {"status": "updated", "id": existing.id}
 
@@ -105,12 +109,16 @@ async def sync_youtube_tracking(
         db.commit()
         return {"status": "updated_existing", "id": summarized.id}
 
+    # Generate summary from metadata for visibility on dashboard
+    summary_text = f"Watched: {req.title} by {req.channel} ({req.completion}% watched)"
     entry = LearningEntry(
         user_id=current_user.id,
         source_type="youtube",
         title=req.title,
         source_url=url,
         raw_content="",
+        summary=summary_text,
+        topics="youtube,tutorial",
         metadata_json=json.dumps(metadata_dict),
     )
     db.add(entry)

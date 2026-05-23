@@ -58,30 +58,65 @@ function setUserOverride(videoId, val) {
 // ── Send to backend ────────────────────────────────────────
 function sendToBackend(meta) {
   var sentKey = "sent_" + meta.videoId;
-  chrome.storage.local.get([sentKey], function(result) {
+  chrome.storage.local.get([sentKey, "ytai_videos", "pm_token"], function(result) {
     if (result[sentKey]) {
       console.log("[YT-AI] Already sent:", meta.title);
       return;
     }
-    var videoUrl = "https://www.youtube.com/watch?v=" + meta.videoId;
-    fetch(BACKEND_URL + "/ingest/youtube", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url: videoUrl })
-    })
-    .then(function(r) {
-      if (!r.ok) throw new Error("HTTP " + r.status);
-      return r.json();
-    })
-    .then(function() {
-      var o = {};
-      o[sentKey] = true;
-      chrome.storage.local.set(o);
-      showStatusToast("✓ Summary saved to your learning tracker");
-    })
-    .catch(function(err) {
-      console.warn("[YT-AI] Backend error:", err.message);
-      showStatusToast("⚠ Could not reach backend");
+    var token = result.pm_token;
+    if (!token) {
+      console.warn("[YT-AI] No auth token found. Visit http://localhost:5173 to sync your session.");
+      showStatusToast("⚠ Login to dashboard first!");
+      return;
+    }
+    
+    var videos = result.ytai_videos || {};
+    var videoData = videos[meta.videoId];
+    
+    // If async save hasn't finished yet, construct it manually
+    if (!videoData) {
+      videoData = {
+        videoId:       meta.videoId,
+        title:         meta.title,
+        channel:       meta.channel,
+        duration:      meta.duration,
+        thumbnail:     meta.thumbnail,
+        isEducational: true,
+        confidence:    100,
+        watchTime:     0,
+        completion:    0,
+        firstSeen:     new Date().toISOString(),
+        lastWatched:   new Date().toISOString(),
+        rewatchCount:  1
+      };
+    }
+
+    chrome.runtime.sendMessage({
+      type: "SYNC_YOUTUBE",
+      token: token,
+      videoData: videoData
+    }, function(response) {
+      if (chrome.runtime.lastError) {
+        console.warn("[YT-AI] Extension error:", chrome.runtime.lastError);
+        showStatusToast("⚠ Extension error. Please reload extension.");
+        return;
+      }
+      
+      if (response && response.success) {
+        var o = {};
+        o[sentKey] = true;
+        chrome.storage.local.set(o);
+        showStatusToast("✓ Synced to learning tracker");
+      } else {
+        var errMsg = (response && response.error) ? response.error : "Unknown error";
+        console.warn("[YT-AI] Backend error:", errMsg);
+        if (errMsg.includes("401")) {
+          showStatusToast("⚠ Auth expired. Re-login to dashboard.");
+          chrome.storage.local.remove("pm_token");
+        } else {
+          showStatusToast("⚠ Could not reach backend");
+        }
+      }
     });
   });
 }
@@ -429,9 +464,39 @@ function showBadge(isEdu, confidence, meta) {
   });
 }
 
+// ── Cleanup Storage ─────────────────────────────────────────
+function cleanupOldVideos() {
+  chrome.storage.local.get(["ytai_videos"], function(result) {
+    var videos = result.ytai_videos || {};
+    var changed = false;
+    var now = new Date().getTime();
+    var SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000; // 7 days in milliseconds
+
+    for (var vid in videos) {
+      var dateStr = videos[vid].lastWatched || videos[vid].firstSeen;
+      if (!dateStr) continue;
+      
+      var lastWatched = new Date(dateStr).getTime();
+      if (now - lastWatched > SEVEN_DAYS_MS) {
+        delete videos[vid];
+        
+        // Also clean up the sentKey and override flags to be perfectly clean
+        chrome.storage.local.remove(["sent_" + vid, "override_" + vid]);
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      chrome.storage.local.set({ ytai_videos: videos });
+      console.log("[YT-AI] Cleared old videos from extension storage to save space.");
+    }
+  });
+}
+
 // ── Main ───────────────────────────────────────────────────
 function run() {
   stopWatchTimeTracker();
+  cleanupOldVideos();
 
   setTimeout(function() {
     var meta = getMeta();

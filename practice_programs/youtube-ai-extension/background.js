@@ -1,16 +1,24 @@
 chrome.tabs.onUpdated.addListener(function(tabId, changeInfo, tab) {
-  if (
-    changeInfo.status === "complete" &&
-    tab.url &&
-    tab.url.includes("youtube.com/watch")
-  ) {
-    chrome.scripting.executeScript({
-      target: { tabId: tabId },
-      files: ["content.js"]
-    }).then(() => {
-      console.log("[YT-AI] Script injected into tab:", tabId);
-    }).catch((err) => {
-      console.error("[YT-AI] Injection failed:", err);
-    });
+  // content.js is injected automatically via manifest.json
+});
+
+chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
+  if (request.type === "SYNC_YOUTUBE") {
+    fetch("http://localhost:8000/ingest/youtube/sync", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + request.token
+      },
+      body: JSON.stringify(request.videoData)
+    })
+    .then(r => {
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      return r.json();
+    })
+    .then(data => sendResponse({ success: true, data: data }))
+    .catch(err => sendResponse({ success: false, error: err.message }));
+    
+    return true; // Keep message channel open for async response
   }
 });
