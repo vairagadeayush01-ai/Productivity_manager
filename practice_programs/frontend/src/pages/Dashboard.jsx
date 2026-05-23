@@ -130,11 +130,11 @@ export default function Dashboard() {
           value={data?.count ?? 0}
         />
         <StatCard
-          icon={Code2}
+          icon={Flame}
           iconBg="var(--warning-light)"
           iconColor="var(--warning)"
-          label="LeetCode (total)"
-          value={stats?.leetcode ?? '—'}
+          label="Streak"
+          value={stats?.streak ?? '—'}
         />
         <StatCard
           icon={dueList.length ? AlertCircle : Flame}
@@ -233,63 +233,6 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* ── Integrations (bottom, collapsible look) ── */}
-      <div className="panel" style={{ marginBottom: 0 }}>
-        <div className="panel__header">
-          <div>
-            <h2 className="panel__title">
-              <RefreshCw size={14} className={syncing ? 'animate-spin' : ''} />
-              Integrations
-            </h2>
-            <p className="panel__desc">Auto-sync runs nightly. Pull today's activity anytime.</p>
-          </div>
-          <button
-            type="button"
-            className="btn-secondary btn-secondary--sm"
-            disabled={syncing}
-            onClick={syncAll}
-            style={{ display: 'flex', alignItems: 'center', gap: '5px' }}
-          >
-            <RefreshCw size={13} className={syncing ? 'animate-spin' : ''} />
-            Sync now
-          </button>
-        </div>
-
-        <div className="integration-grid">
-          <IntegrationTile
-            name="GitHub"
-            configured={integrationStatus?.github_configured}
-          />
-          <IntegrationTile
-            name="LeetCode"
-            configured={integrationStatus?.leetcode_configured}
-          />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function IntegrationTile({ name, configured }) {
-  return (
-    <div className="integration-card">
-      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-        <div style={{
-          width: 32, height: 32, borderRadius: 'var(--radius-sm)',
-          background: configured ? 'var(--success-light)' : 'var(--bg-surface)',
-          border: `1px solid ${configured ? 'rgba(16,185,129,0.2)' : 'var(--border)'}`,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}>
-          <span className={`status-dot status-dot--${configured ? 'on' : 'off'}`} />
-        </div>
-        <div>
-          <div style={{ fontWeight: 600, fontSize: '0.8125rem', color: 'var(--text-main)' }}>{name}</div>
-          <div style={{ fontSize: '0.75rem', color: configured ? 'var(--success)' : 'var(--danger)', marginTop: '1px' }}>
-            {configured ? 'Connected' : 'Not configured'}
-          </div>
-        </div>
-      </div>
-      <ChevronRight size={16} color="var(--text-faint)" />
     </div>
   );
 }

@@ -184,3 +184,57 @@ async def ingest_leetcode(
     return entry_store.save_entry(
         db, current_user.id, "leetcode", title, req.url, raw_content, result
     )
+
+
+class WebpageRequest(BaseModel):
+    url: str = Field(..., min_length=1)
+
+@router.post("/webpage")
+@limiter.limit("15/minute")
+async def ingest_webpage(
+    request: Request,
+    req: WebpageRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        result = summarize_manual_log(f"Read article from {req.url}")
+    except Exception as e:
+        raise HTTPException(502, f"Groq API error: {e}")
+    summary = result.get("summary", req.url)
+    return entry_store.save_entry(
+        db, current_user.id, "webpage", summary[:80], req.url, req.url, result
+    )
+
+
+class PasteRequest(BaseModel):
+    text: str = Field(..., min_length=1)
+
+@router.post("/paste")
+@limiter.limit("20/minute")
+async def ingest_paste(
+    request: Request,
+    req: PasteRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        result = summarize_manual_log(req.text)
+    except Exception as e:
+        raise HTTPException(502, f"Groq API error: {e}")
+    summary = result.get("summary", req.text[:80])
+    return entry_store.save_entry(
+        db, current_user.id, "paste", summary[:80], "", req.text[:2000], result
+    )
+
+
+@router.delete("/entry/{entry_id}")
+async def delete_entry(
+    entry_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    success = entry_store.delete_entry(db, entry_id, current_user.id)
+    if not success:
+        raise HTTPException(404, "Entry not found")
+    return {"status": "deleted"}

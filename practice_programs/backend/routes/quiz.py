@@ -1,5 +1,4 @@
-from datetime import date
-
+from datetime import date, datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from core.limiter import limiter
@@ -20,17 +19,19 @@ class AnswerRequest(BaseModel):
     correct_answer: str
 
 
-@router.get("/today")
+@router.get("/recent")
 @limiter.limit("10/minute")
-async def get_today_quiz(
+async def get_recent_quiz(
     request: Request,
     difficulty: str = Query("medium", enum=["easy", "medium", "hard"]),
     n: int = Query(20, ge=5, le=50),
+    days: int = Query(7, ge=1, le=30),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     today = date.today()
-    start, end = today_start_end()
+    start = datetime.combine(today - timedelta(days=days), datetime.min.time())
+    end = datetime.combine(today, datetime.max.time())
     entries = (
         db.query(LearningEntry)
         .filter(
@@ -44,7 +45,7 @@ async def get_today_quiz(
     if not entries:
         raise HTTPException(
             404,
-            "No entries logged today. Add something first or sync your GitHub/LeetCode!",
+            f"No entries logged in the past {days} days. Add something first!",
         )
 
     entry_dicts = [

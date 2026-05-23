@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from dotenv import load_dotenv
 
 from database import LearningEntry, QuizResult
+from services.stats_service import get_top_topics
 
 load_dotenv()
 
@@ -37,14 +38,7 @@ def generate_weekly_report(db: Session, user_id: int) -> dict:
     mn = sum(1 for e in entries if e.source_type in ("manual", "paste"))
     rd = sum(1 for e in entries if e.source_type in ("pdf", "webpage"))
 
-    all_topics = []
-    for e in entries:
-        if e.topics:
-            all_topics.extend([t.strip() for t in e.topics.split(",")])
-    topic_counts = {}
-    for t in all_topics:
-        topic_counts[t] = topic_counts.get(t, 0) + 1
-    top_topics = sorted(topic_counts.items(), key=lambda x: x[1], reverse=True)[:8]
+    top_topics = get_top_topics(entries, limit=8)
 
     total_q = len(results)
     correct = sum(1 for r in results if r.is_correct)
@@ -61,7 +55,7 @@ def generate_weekly_report(db: Session, user_id: int) -> dict:
         "active_days": active_days,
         "quiz_accuracy": accuracy,
         "quiz_total": total_q,
-        "top_topics": [t[0] for t in top_topics],
+        "top_topics": top_topics,
     }
 
     summaries = "\n".join(
@@ -74,7 +68,7 @@ Week stats:
 - Videos: {yt}, LeetCode: {lc}, GitHub: {gh}, Notes/Reading: {mn+rd}
 - Active days: {active_days}/7
 - Quiz accuracy: {accuracy}% ({correct}/{total_q})
-- Top topics: {', '.join([t[0] for t in top_topics[:5]])}
+- Top topics: {', '.join(top_topics[:5])}
 
 What they studied:
 {summaries}

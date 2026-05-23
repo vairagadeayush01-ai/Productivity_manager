@@ -6,7 +6,7 @@ import EmptyState from '../components/EmptyState';
 import SourceBadge from '../components/SourceBadge';
 import {
   History as HistoryIcon, BookOpen, Video, GitBranch,
-  Code2, FileText, Calendar, Search, ChevronRight, SlidersHorizontal,
+  Code2, FileText, Calendar, Search, ChevronRight, SlidersHorizontal, X
 } from 'lucide-react';
 
 const SOURCE_TABS = [
@@ -43,6 +43,20 @@ export default function History() {
   const [total,     setTotal]     = useState(0);
   const [diaries,   setDiaries]   = useState([]);
   const [loading,   setLoading]   = useState(true);
+  const [selectedEntry, setSelectedEntry] = useState(null);
+
+  const handleDelete = async (e, id) => {
+    e.stopPropagation();
+    if (!window.confirm("Delete this entry forever?")) return;
+    try {
+      await api.deleteEntry(id);
+      setEntries(entries.filter(en => en.id !== id));
+      setTotal(t => t - 1);
+      setSelectedEntry(null);
+    } catch (err) {
+      alert("Failed to delete entry.");
+    }
+  };
 
   /* ── load entries ── */
   const loadEntries = useCallback(async () => {
@@ -214,33 +228,51 @@ export default function History() {
                 {total} {total === 1 ? 'entry' : 'entries'}
               </p>
               <div className="entry-list">
-                {entries.map(entry => (
-                  <article key={entry.id} className="entry-card">
-                    {entry.source_type === 'youtube' && (
-                      <div className="entry-card__thumb">
-                        {youtubeThumb(entry.source_url)
-                          ? <img src={youtubeThumb(entry.source_url)} alt="" loading="lazy" />
-                          : <Video size={24} style={{ margin: 'auto', display: 'block', paddingTop: '30%', color: 'var(--text-faint)' }} />
-                        }
+                {entries.map(entry => {
+                  return (
+                    <article 
+                      key={entry.id} 
+                      className="entry-card" 
+                      onClick={() => setSelectedEntry(entry)}
+                      style={{ cursor: 'pointer' }}
+                    >
+                      {entry.source_type === 'youtube' && (
+                        <div className="entry-card__thumb">
+                          {youtubeThumb(entry.source_url)
+                            ? <img src={youtubeThumb(entry.source_url)} alt="" loading="lazy" />
+                            : <Video size={24} style={{ margin: 'auto', display: 'block', paddingTop: '30%', color: 'var(--text-faint)' }} />
+                          }
+                        </div>
+                      )}
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                          <SourceBadge type={entry.source_type} />
+                          <span style={{ fontSize: '0.75rem', color: 'var(--text-faint)' }}>
+                            {new Date(entry.created_at || entry.date).toLocaleDateString()}
+                          </span>
+                        </div>
+                        <h3 className="entry-card__title">{entry.title}</h3>
+                        
+                        {entry.summary && (
+                          <p className="entry-card__summary" style={{ 
+                            display: '-webkit-box',
+                            WebkitLineClamp: '2',
+                            WebkitBoxOrient: 'vertical',
+                            overflow: 'hidden'
+                          }}>
+                            {entry.summary}
+                          </p>
+                        )}
+
+                        <div className="topic-tags" style={{ marginTop: '12px' }}>
+                          {(entry.topics || []).map((t, i) => (
+                            <span key={i} className="topic-tag">{String(t).trim()}</span>
+                          ))}
+                        </div>
                       </div>
-                    )}
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                        <SourceBadge type={entry.source_type} />
-                        <span style={{ fontSize: '0.75rem', color: 'var(--text-faint)' }}>
-                          {new Date(entry.created_at || entry.date).toLocaleDateString()}
-                        </span>
-                      </div>
-                      <h3 className="entry-card__title">{entry.title}</h3>
-                      {entry.summary && <p className="entry-card__summary">{entry.summary}</p>}
-                      <div className="topic-tags">
-                        {(entry.topics || []).map((t, i) => (
-                          <span key={i} className="topic-tag">{String(t).trim()}</span>
-                        ))}
-                      </div>
-                    </div>
-                  </article>
-                ))}
+                    </article>
+                  );
+                })}
               </div>
 
               {/* Pagination */}
@@ -303,6 +335,69 @@ export default function History() {
           )}
         </>
       )}
+    {/* ── MODAL ── */}
+    {selectedEntry && (
+      <>
+        <div 
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 999 }}
+          onClick={() => setSelectedEntry(null)}
+        />
+        <div style={{
+          position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
+          background: 'var(--bg-surface)', border: '1px solid var(--border)',
+          borderRadius: '12px', padding: '24px', zIndex: 1000, width: '90%', maxWidth: '600px',
+          maxHeight: '90vh', overflowY: 'auto'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <SourceBadge type={selectedEntry.source_type} />
+              <span style={{ fontSize: '0.8125rem', color: 'var(--text-faint)' }}>
+                {new Date(selectedEntry.created_at || selectedEntry.date).toLocaleDateString()}
+              </span>
+            </div>
+            <button onClick={() => setSelectedEntry(null)} className="btn-icon">
+              <X size={18} />
+            </button>
+          </div>
+          <h2 style={{ fontSize: '1.25rem', marginBottom: '16px' }}>{selectedEntry.title}</h2>
+          
+          <div style={{ 
+            fontSize: '0.9375rem', lineHeight: 1.6, color: 'var(--text-main)', 
+            whiteSpace: 'pre-wrap', marginBottom: '24px', padding: '16px',
+            background: 'var(--bg-surface-2)', borderRadius: '8px'
+          }}>
+            {selectedEntry.summary || "No summary available."}
+          </div>
+
+          <div className="topic-tags" style={{ marginBottom: '24px' }}>
+            {(selectedEntry.topics || []).map((t, i) => (
+              <span key={i} className="topic-tag">{String(t).trim()}</span>
+            ))}
+          </div>
+
+          <div style={{ display: 'flex', gap: '16px', borderTop: '1px solid var(--border)', paddingTop: '16px' }}>
+            {selectedEntry.source_url && (
+              <a 
+                href={selectedEntry.source_url} 
+                target="_blank" 
+                rel="noreferrer"
+                className="btn-secondary btn-secondary--sm"
+              >
+                View original source ↗
+              </a>
+            )}
+            <button 
+              type="button" 
+              className="btn-secondary btn-secondary--sm" 
+              onClick={e => handleDelete(e, selectedEntry.id)}
+              style={{ color: 'var(--danger)', borderColor: 'rgba(239,68,68,0.2)' }}
+            >
+              Delete entry
+            </button>
+          </div>
+        </div>
+      </>
+    )}
     </div>
   );
 }

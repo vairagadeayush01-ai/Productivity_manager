@@ -22,7 +22,8 @@ export default function Quiz() {
 
   // -- Controls ----------------------------------------------
   const [difficulty, setDifficulty] = useState('medium');
-  const [numQuestions, setNumQuestions] = useState(20);
+  const [numQuestions, setNumQuestions] = useState(10);
+  const [days, setDays] = useState(7);
 
   // -- Quiz state --------------------------------------------
   const [quizData, setQuizData]     = useState(null);
@@ -53,14 +54,6 @@ export default function Quiz() {
   }, [topicParam]);
 
   async function generateQuiz() {
-    const label = topicParam ? `topic review for "${topicParam}"` : "today's learning";
-    if (
-      !window.confirm(
-        `Start a ${difficulty} quiz with ${numQuestions} questions from ${label}? This uses your Groq API quota.`
-      )
-    ) {
-      return;
-    }
     setLoading(true);
     setError(null);
     setGenerated(false);
@@ -73,14 +66,14 @@ export default function Quiz() {
     try {
       const data = topicParam
         ? await api.getTopicReviewQuiz(topicParam, difficulty, numQuestions)
-        : await api.getTodayQuiz(difficulty, numQuestions);
+        : await api.getRecentQuiz(difficulty, numQuestions, days);
       setQuizData(data);
       setGenerated(true);
     } catch (err) {
       if (err.response?.status === 404) {
         setError(topicParam
           ? `No notes found for "${topicParam}". Try adding more content.`
-          : "No entries logged today! Sync your GitHub/LeetCode or add a note first.");
+          : "No entries logged recently! Add a note or YouTube video first.");
       } else {
         setError("Failed to generate quiz: " + (err.response?.data?.detail || err.message));
       }
@@ -150,10 +143,10 @@ export default function Quiz() {
               </div>
               <div>
                 <h1 style={{ fontSize: '1.7rem' }}>
-                  {topicParam ? `Review: ${topicParam}` : "Today's Quiz"}
+                  {topicParam ? `Review: ${topicParam}` : "Recent Quiz"}
                 </h1>
                 <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-                  {topicParam ? 'Topic-focused spaced repetition' : 'Generated from everything you learned today'}
+                  {topicParam ? 'Topic-focused spaced repetition' : 'Generated from your past 7 days of learning'}
                 </p>
               </div>
             </div>
@@ -209,6 +202,32 @@ export default function Quiz() {
               />
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '4px' }}>
                 <span>5</span><span>10</span><span>15</span><span>20</span><span>25</span><span>30</span><span>35</span><span>40</span>
+              </div>
+            </div>
+
+            {/* Timeframe */}
+            <div style={{ marginBottom: '2rem' }}>
+              <label style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem', color: 'var(--text-main)', fontWeight: 500, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                <span>Timeframe</span>
+                <span style={{ color: 'var(--primary-glow)' }}>Last {days} days</span>
+              </label>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
+                {[3, 7, 30].map((d) => (
+                  <button
+                    key={d}
+                    type="button"
+                    onClick={() => setDays(d)}
+                    style={{
+                      padding: '0.8rem', borderRadius: '12px',
+                      border: `1.5px solid ${days === d ? 'var(--primary)' : 'rgba(255,255,255,0.08)'}`,
+                      background: days === d ? 'var(--primary-light)' : 'rgba(255,255,255,0.03)',
+                      color: days === d ? 'var(--primary)' : 'var(--text-muted)',
+                      fontWeight: days === d ? 600 : 400, transition: 'all 0.2s',
+                    }}
+                  >
+                    {d} Days
+                  </button>
+                ))}
               </div>
             </div>
 
@@ -305,12 +324,12 @@ export default function Quiz() {
         <div>
           <h1 style={{ fontSize: '1.6rem' }}>{topicParam ? `Review: ${topicParam}` : 'Daily Quiz'}</h1>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-            {quizData.difficulty?.toUpperCase()} difficulty ? {quizData.entries_used || ''} {quizData.entries_used ? 'entries used' : ''}
+            {quizData.difficulty?.toUpperCase()} difficulty · {quizData.entries_used || ''} {quizData.entries_used ? 'entries used' : ''}
           </p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
           <div style={{ fontSize: '0.85rem', color: '#22c55e', fontWeight: 600 }}>
-            {score} ?
+            {score} ·
           </div>
           <div style={{ background: 'rgba(255,255,255,0.08)', padding: '6px 14px', borderRadius: '20px', fontSize: '0.85rem' }}>
             {currentIdx + 1} / {quizData.total}
@@ -441,7 +460,7 @@ function PerformanceView({ perf }) {
     <div className="glass-card animate-fade-in" style={{ padding: '2rem' }}>
       <h2 style={{ fontSize: '1.4rem', marginBottom: '0.5rem' }}>Your Performance</h2>
       <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '1.5rem' }}>
-        {overall.total} questions answered ? {overall.pct}% overall accuracy
+        {overall.total} questions answered · {overall.pct}% overall accuracy
       </p>
 
       {/* Overall bar */}

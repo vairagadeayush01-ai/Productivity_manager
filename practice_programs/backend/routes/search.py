@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from core.deps import get_current_user
 from database import LearningEntry, User, get_db
-from services import vector_store
+from services import vector_store, stats_service
 from utils.datetime_helpers import today_start_end
 
 router = APIRouter(prefix="/search", tags=["search"])
@@ -151,7 +151,7 @@ async def get_stats(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Returns aggregated stats in a single DB query."""
+    """Returns aggregated stats."""
     row = (
         db.query(
             func.count(LearningEntry.id).label("total"),
@@ -159,12 +159,17 @@ async def get_stats(
             func.sum(case((LearningEntry.source_type == "leetcode", 1), else_=0)).label("leetcode"),
             func.sum(case((LearningEntry.source_type == "github", 1), else_=0)).label("github"),
             func.sum(
-                case((LearningEntry.source_type.in_(["manual", "paste"]), 1), else_=0)
+                case((LearningEntry.source_type.in_(["manual", "paste", "webpage", "pdf"]), 1), else_=0)
             ).label("manual"),
         )
         .filter(LearningEntry.user_id == current_user.id)
         .one()
     )
+
+    streak_count = stats_service.calculate_streak(db, current_user.id)
+
+    entries = db.query(LearningEntry.topics).filter(LearningEntry.user_id == current_user.id).all()
+    top_topics = stats_service.get_top_topics(entries)
 
     return {
         "total_entries": row.total or 0,
@@ -173,4 +178,8 @@ async def get_stats(
         "github": int(row.github or 0),
         "manual": int(row.manual or 0),
         "vectors_stored": vector_store.collection_count(),
+        "streak": streak_count,
+        "top_topics": top_topics,
     }
+
+

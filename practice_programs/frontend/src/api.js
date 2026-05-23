@@ -103,6 +103,10 @@ export const api = {
     const res = await client.get('/search/stats');
     return res.data;
   },
+  deleteEntry: async (id) => {
+    const res = await client.delete(`/ingest/entry/${id}`);
+    return res.data;
+  },
 
   // --- Diary ---
   getDiaries: async () => {
@@ -127,10 +131,18 @@ export const api = {
     const res = await client.post('/ingest/leetcode', { url, outcome, notes });
     return res.data;
   },
+  ingestWebpage: async (url) => {
+    const res = await client.post('/ingest/webpage', { url });
+    return res.data;
+  },
+  ingestPaste: async (text) => {
+    const res = await client.post('/ingest/paste', { text });
+    return res.data;
+  },
 
   // --- Quiz ---
-  getTodayQuiz: async (difficulty = 'medium', n = 20) => {
-    const res = await client.get('/quiz/today', { params: { difficulty, n } });
+  getRecentQuiz: async (difficulty = 'medium', n = 20, days = 7) => {
+    const res = await client.get('/quiz/recent', { params: { difficulty, n, days } });
     return res.data;
   },
   getTopicReviewQuiz: async (topic, difficulty = 'medium', n = 10) => {

@@ -163,3 +163,19 @@ def update_entry_from_summary(
         spaced_repetition.record_topic_seen(db, entry.user_id, topic)
 
     return _entry_response(entry, topics, entry.source_type)
+
+
+def delete_entry(db: Session, entry_id: int, user_id: int) -> bool:
+    entry = db.query(LearningEntry).filter(LearningEntry.id == entry_id, LearningEntry.user_id == user_id).first()
+    if not entry:
+        return False
+    
+    if entry.chroma_id:
+        try:
+            vector_store.collection.delete(ids=[entry.chroma_id])
+        except Exception:
+            pass
+
+    db.delete(entry)
+    db.commit()
+    return True

@@ -16,10 +16,6 @@ const SOURCE_FILTERS = [
   { key: 'manual',   label: 'Manual',   icon: FileText  },
 ];
 
-const SUGGESTIONS = [
-  'dynamic programming', 'binary search', 'system design',
-  'React hooks', 'async await', 'graph algorithms',
-];
 
 function useDebounce(value, delay) {
   const [debounced, setDebounced] = useState(value);
@@ -36,7 +32,16 @@ export default function Search() {
   const [results,    setResults]    = useState([]);
   const [loading,    setLoading]    = useState(false);
   const [searched,   setSearched]   = useState(false);
+  const [suggestions, setSuggestions] = useState([]);
   const inputRef = useRef(null);
+
+  useEffect(() => {
+    api.getStats().then(stats => {
+      if (stats.top_topics && stats.top_topics.length > 0) {
+        setSuggestions(stats.top_topics.slice(0, 6));
+      }
+    }).catch(console.error);
+  }, []);
 
   const debouncedQuery = useDebounce(query, 350);
 
@@ -125,11 +130,11 @@ export default function Search() {
       </div>
 
       {/* ── Suggestion pills (before search) ── */}
-      {!searched && (
+      {!searched && suggestions.length > 0 && (
         <div>
           <p className="section-label" style={{ marginBottom: '10px' }}>Try searching for</p>
           <div className="chips-row">
-            {SUGGESTIONS.map(s => (
+            {suggestions.map(s => (
               <button
                 key={s}
                 type="button"
