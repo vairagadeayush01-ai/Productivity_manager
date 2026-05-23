@@ -45,6 +45,7 @@ export function getStoredUser() {
 }
 
 export const api = {
+  // --- Auth ---
   login: async (email, password) => {
     const res = await client.post('/auth/login', { email, password });
     return res.data;
@@ -62,14 +63,31 @@ export const api = {
     return res.data;
   },
 
+  // --- Search / History ---
   searchToday: async () => {
     const res = await client.get('/search/today');
     return res.data;
   },
-  getAllHistory: async (skip = 0, limit = 50) => {
-    const res = await client.get('/search/history', { params: { skip, limit } });
+  getAllHistory: async ({ skip = 0, limit = 50, source_type = null, start_date = null, end_date = null } = {}) => {
+    const params = { skip, limit };
+    if (source_type) params.source_type = source_type;
+    if (start_date)  params.start_date = start_date;
+    if (end_date)    params.end_date = end_date;
+    const res = await client.get('/search/history', { params });
     return res.data;
   },
+  searchBrain: async (query, n = 5, source_type = null) => {
+    const params = { q: query, n };
+    if (source_type) params.source_type = source_type;
+    const res = await client.get('/search/', { params });
+    return res.data;
+  },
+  getStats: async () => {
+    const res = await client.get('/search/stats');
+    return res.data;
+  },
+
+  // --- Diary ---
   getDiaries: async () => {
     const res = await client.get('/diary/');
     return res.data;
@@ -78,14 +96,8 @@ export const api = {
     const res = await client.get(`/diary/${date}`);
     return res.data;
   },
-  searchBrain: async (query, n = 5) => {
-    const res = await client.get('/search/', { params: { q: query, n } });
-    return res.data;
-  },
-  getStats: async () => {
-    const res = await client.get('/search/stats');
-    return res.data;
-  },
+
+  // --- Ingest ---
   ingestYoutube: async (url) => {
     const res = await client.post('/ingest/youtube', { url });
     return res.data;
@@ -98,6 +110,8 @@ export const api = {
     const res = await client.post('/ingest/leetcode', { url, outcome, notes });
     return res.data;
   },
+
+  // --- Quiz ---
   getTodayQuiz: async (difficulty = 'medium', n = 20) => {
     const res = await client.get('/quiz/today', { params: { difficulty, n } });
     return res.data;
@@ -120,10 +134,14 @@ export const api = {
     const res = await client.get('/quiz/performance');
     return res.data;
   },
+
+  // --- Report ---
   getWeeklyReport: async () => {
     const res = await client.get('/report/weekly');
     return res.data;
   },
+
+  // --- Auto-fetch integrations ---
   getIntegrationStatus: async () => {
     const res = await client.get('/fetch/status');
     return res.data;

@@ -62,7 +62,7 @@ async def ingest_youtube(
     except ValueError as e:
         logger.warning("Transcript failed for %s: %s", req.url, e)
         raise HTTPException(422, str(e))
-    title = get_video_title(video_id)
+    title = await get_video_title(video_id)
     try:
         result = summarize_transcript(transcript, title)
     except Exception as e:

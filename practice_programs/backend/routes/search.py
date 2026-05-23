@@ -1,4 +1,5 @@
-from datetime import date as date_type
+from datetime import date as date_type, datetime
+from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import case, func
@@ -11,16 +12,28 @@ from utils.datetime_helpers import today_start_end
 
 router = APIRouter(prefix="/search", tags=["search"])
 
+# Valid source types for filter validation
+_SOURCE_TYPES = {"youtube", "leetcode", "github", "manual", "paste", "pdf", "webpage"}
+
 
 @router.get("/")
 async def search_entries(
     q: str = Query(..., min_length=1),
     n: int = Query(5, ge=1, le=30),
+    source_type: Optional[str] = Query(None, description="Filter by source: youtube, leetcode, github, manual, pdf, webpage"),
     current_user: User = Depends(get_current_user),
 ):
-    results = vector_store.search(query=q, n_results=n, user_id=current_user.id)
+    """Semantic vector search across all learning entries."""
+    results = vector_store.search(query=q, n_results=n * 2, user_id=current_user.id)
     if not results:
         return {"query": q, "results": [], "message": "Nothing found yet."}
+
+    # Apply source_type post-filter if requested
+    if source_type and source_type in _SOURCE_TYPES:
+        results = [r for r in results if r["metadata"].get("source_type") == source_type]
+
+    results = results[:n]
+
     return {
         "query": q,
         "results": [
@@ -43,6 +56,7 @@ async def get_today(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """Returns all entries created today."""
     today = date_type.today()
     start, end = today_start_end()
     entries = (
@@ -77,12 +91,44 @@ async def get_today(
 async def get_history(
     skip: int = 0,
     limit: int = 50,
+    source_type: Optional[str] = Query(None, description="Filter: youtube, leetcode, github, manual, pdf, webpage"),
+    start_date: Optional[str] = Query(None, description="ISO date string YYYY-MM-DD"),
+    end_date: Optional[str] = Query(None, description="ISO date string YYYY-MM-DD"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """
+    Paginated history of all learning entries with optional filters:
+    - source_type: filter by content source
+    - start_date / end_date: filter by date range (YYYY-MM-DD)
+    """
     q = db.query(LearningEntry).filter(LearningEntry.user_id == current_user.id)
-    entries = q.order_by(LearningEntry.created_at.desc()).offset(skip).limit(limit).all()
+
+    # Source type filter
+    if source_type and source_type in _SOURCE_TYPES:
+        q = q.filter(LearningEntry.source_type == source_type)
+
+    # Date range filters
+    if start_date:
+        try:
+            start_dt = datetime.strptime(start_date, "%Y-%m-%d")
+            q = q.filter(LearningEntry.created_at >= start_dt)
+        except ValueError:
+            pass  # Silently ignore malformed dates
+
+    if end_date:
+        try:
+            # Include the full end day (up to 23:59:59)
+            end_dt = datetime.strptime(end_date, "%Y-%m-%d").replace(
+                hour=23, minute=59, second=59
+            )
+            q = q.filter(LearningEntry.created_at <= end_dt)
+        except ValueError:
+            pass
+
     total = q.count()
+    entries = q.order_by(LearningEntry.created_at.desc()).offset(skip).limit(limit).all()
+
     return {
         "total": total,
         "entries": [
@@ -105,6 +151,7 @@ async def get_stats(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """Returns aggregated stats in a single DB query."""
     row = (
         db.query(
             func.count(LearningEntry.id).label("total"),

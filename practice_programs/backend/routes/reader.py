@@ -67,7 +67,7 @@ async def ingest_webpage(
     if not req.url.startswith(("http://", "https://")):
         raise HTTPException(400, "Include http:// or https:// in the URL.")
     try:
-        text, title = fetch_webpage_text(req.url)
+        text, title = await fetch_webpage_text(req.url)
     except ValueError as e:
         raise HTTPException(422, str(e))
     content = text + (f"\nFocus on: {req.focus}" if req.focus.strip() else "")
