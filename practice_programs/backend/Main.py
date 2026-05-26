@@ -11,6 +11,13 @@ from core.logging_config import setup_logging
 from database import init_db, verify_database_path
 from routes import auth, diary, ingest, quiz, reader, report, search
 from routes.Auto_fetch import router as auto_fetch_router
+from routes.activity import router as activity_router
+from routes.profile import router as profile_router       # Phase 2.1
+from routes.github import router as github_router         # Phase 2.2
+from routes.leetcode import router as leetcode_router     # Phase 2.3
+from routes.chat import router as chat_router             # Phase 3.1
+from routes.tutor import router as tutor_router           # Phase 3.3
+from routes.calendar import router as calendar_router           # Phase 3.3
 from services.scheduler import start_scheduler
 
 load_dotenv()
@@ -39,9 +46,9 @@ if _sentry_dsn:
         logger.warning("SENTRY_DSN set but sentry-sdk not installed")
 
 app = FastAPI(
-    title="Learning Tracker API",
-    description="Your personal AI learning diary.",
-    version="1.1.0",
+    title="Antigravity — AI Developer Intelligence",
+    description="Your personal AI-powered developer productivity tracker.",
+    version="2.0.0",
 )
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
@@ -50,11 +57,17 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization"],
 )
 
 app.include_router(auth.router)
+app.include_router(activity_router)        # Phase 1.1 — offline sync batch endpoint
+app.include_router(github_router, prefix="/api/v1/github")
+app.include_router(leetcode_router, prefix="/api/v1/leetcode")
+app.include_router(chat_router, prefix="/api/v1/chat")
+app.include_router(tutor_router, prefix="/api/v1/tutor")
+app.include_router(calendar_router, prefix="/calendar")
 app.include_router(ingest.router)
 app.include_router(search.router)
 app.include_router(reader.router)
@@ -62,6 +75,12 @@ app.include_router(auto_fetch_router)
 app.include_router(quiz.router)
 app.include_router(report.router)
 app.include_router(diary.router)
+app.include_router(profile_router)         # Phase 2.1 — profile + connected accounts
+app.include_router(github_router)          # Phase 2.2 — GitHub diff intelligence
+app.include_router(leetcode_router)        # Phase 2.3 — LeetCode solution intelligence
+app.include_router(chat_router)            # Phase 3.1 — RAG chat
+app.include_router(tutor_router)           # Phase 3.3 — AI tutor with memory
+
 
 
 @app.on_event("startup")

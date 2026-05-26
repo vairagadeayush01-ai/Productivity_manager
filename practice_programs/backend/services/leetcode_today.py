@@ -32,9 +32,24 @@ query problemDetail($titleSlug: String!) {
   question(titleSlug: $titleSlug) {
     difficulty
     topicTags { name }
+    content
   }
 }
 """
+
+# ─── Phase 2.3: AI Solution Analysis ──────────────────────────────────────────
+
+_ANALYSIS_PROBLEM_QUERY = """
+query problemDetail($titleSlug: String!) {
+  question(titleSlug: $titleSlug) {
+    title
+    difficulty
+    topicTags { name }
+    content
+  }
+}
+"""
+
 
 _HEADERS = {
     "Content-Type": "application/json",
@@ -138,3 +153,132 @@ async def fetch_today_submissions() -> dict:
         "total_solved": len(problems),
         "summary_text": "\n".join(lines),
     }
+
+
+# ─── Phase 2.3: Solution analysis functions ───────────────────────────────────
+
+import json as _json
+import os as _os
+import re as _re
+
+
+async def get_problem_description(slug: str) -> str:
+    """
+    Fetch the full problem description HTML from LeetCode GraphQL.
+    Returns plain-text excerpt (strips HTML tags) or '' on failure.
+    Max 600 chars to keep AI prompts concise.
+    """
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            r = await client.post(
+                GRAPHQL_URL,
+                json={"query": _ANALYSIS_PROBLEM_QUERY, "variables": {"titleSlug": slug}},
+                headers=_HEADERS,
+            )
+        q = (r.json().get("data") or {}).get("question") or {}
+        content = q.get("content") or ""
+        # Strip HTML tags
+        plain = _re.sub(r'<[^>]+>', ' ', content)
+        plain = _re.sub(r'\s+', ' ', plain).strip()
+        return plain[:600]
+    except Exception as exc:
+        logger.debug("Problem description fetch failed for %s: %s", slug, exc)
+        return ""
+
+
+async def analyze_solution(
+    problem_title: str,
+    difficulty: str,
+    tags: list,
+    description: str,
+    solution_code: str,
+    language: str,
+) -> dict:
+    """
+    AI analysis of an accepted LeetCode solution using Groq.
+
+    Returns dict with keys:
+      ds_used, pattern, time_complexity, space_complexity,
+      edge_cases_handled (list), missed_edges (list),
+      optimization_tip (str), summary (str)
+
+    On failure: returns safe minimal dict with summary = "Analysis unavailable".
+    """
+    api_key = _os.getenv("GROQ_API_KEY", "")
+    if not api_key:
+        return {
+            "ds_used": "", "pattern": "",
+            "time_complexity": "", "space_complexity": "",
+            "edge_cases_handled": [], "missed_edges": [],
+            "optimization_tip": "",
+            "summary": "Analysis unavailable — GROQ_API_KEY not set.",
+        }
+
+    try:
+        from groq import Groq
+        groq = Groq(api_key=api_key)
+    except Exception:
+        return {
+            "ds_used": "", "pattern": "",
+            "time_complexity": "", "space_complexity": "",
+            "edge_cases_handled": [], "missed_edges": [],
+            "optimization_tip": "",
+            "summary": "Analysis unavailable — Groq client error.",
+        }
+
+    tag_str = ", ".join(tags[:6]) if tags else "none"
+    code_excerpt = solution_code[:2000] if solution_code else "(no code provided)"
+    desc_excerpt = description[:400] if description else "(no description)"
+
+    prompt = f"""Analyze this accepted LeetCode solution.
+
+Problem: {problem_title} ({difficulty})
+Tags: {tag_str}
+Description (excerpt): {desc_excerpt}
+
+User's Solution ({language}):
+{code_excerpt}
+
+Return ONLY valid JSON (no markdown, no explanation outside JSON):
+{{
+  "ds_used": "primary data structure used (e.g., hash map, stack, array)",
+  "pattern": "algorithm pattern (e.g., two pointers, BFS, dynamic programming)",
+  "time_complexity": "O(?) with one-line explanation",
+  "space_complexity": "O(?) with one-line explanation",
+  "edge_cases_handled": ["edge case 1", "edge case 2"],
+  "missed_edges": ["potential edge case not handled, or empty string if none"],
+  "optimization_tip": "one specific tip if applicable, or empty string",
+  "summary": "2-3 sentence analysis of the approach and effectiveness"
+}}"""
+
+    try:
+        resp = groq.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.3,
+            max_tokens=500,
+        )
+        text = resp.choices[0].message.content.strip()
+        if text.startswith("```"):
+            text = text.split("\n", 1)[1].rsplit("```", 1)[0]
+        result = _json.loads(text.strip())
+        return {
+            "ds_used":              str(result.get("ds_used", "")),
+            "pattern":              str(result.get("pattern", "")),
+            "time_complexity":      str(result.get("time_complexity", "")),
+            "space_complexity":     str(result.get("space_complexity", "")),
+            "edge_cases_handled":   list(result.get("edge_cases_handled", [])),
+            "missed_edges":         list(result.get("missed_edges", [])),
+            "optimization_tip":     str(result.get("optimization_tip", "")),
+            "summary":              str(result.get("summary", "")),
+        }
+    except Exception as exc:
+        logger.warning("Groq solution analysis failed for '%s': %s", problem_title, exc)
+        return {
+            "ds_used": "", "pattern": "",
+            "time_complexity": "", "space_complexity": "",
+            "edge_cases_handled": [], "missed_edges": [],
+            "optimization_tip": "",
+            "summary": f"AI analysis failed: {exc}",
+        }
+

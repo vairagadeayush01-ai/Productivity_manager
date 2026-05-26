@@ -11,6 +11,9 @@ import {
   LogOut,
   Menu,
   X,
+  User,
+  Cpu,
+  Calendar,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import IngestModal from './IngestModal';
@@ -19,6 +22,8 @@ const NAV_ITEMS = [
   { path: '/',        label: 'Dashboard', icon: LayoutDashboard },
   { path: '/search',  label: 'Search',    icon: Search          },
   { path: '/quiz',    label: 'Quiz',      icon: Gamepad2        },
+  { path: '/chat',    label: 'AI',        icon: Cpu             },
+  { path: '/planner', label: 'Planner',   icon: Calendar        },
   { path: '/history', label: 'History',   icon: History         },
   { path: '/report',  label: 'Report',    icon: BarChart3       },
 ];
@@ -70,21 +75,15 @@ export default function Navbar() {
               <span className="navbar__add-label">Add</span>
             </button>
 
-            {/* User avatar */}
-            <div
-              title={user?.email}
-              style={{
-                width: 30, height: 30,
-                borderRadius: '50%',
-                background: 'var(--primary-light)',
-                border: '1px solid rgba(99,102,241,0.25)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: '0.75rem', fontWeight: 700, color: 'var(--primary)',
-                flexShrink: 0, cursor: 'default',
-              }}
+            {/* User avatar — links to /profile */}
+            <Link
+              to="/profile"
+              className={`navbar__avatar${location.pathname === '/profile' ? ' navbar__avatar--active' : ''}`}
+              title={`Profile: ${user?.email}`}
+              aria-label="Your profile"
             >
               {initial}
-            </div>
+            </Link>
 
             {/* Logout */}
             <button
@@ -112,7 +111,7 @@ export default function Navbar() {
       </header>
 
       {mobileOpen && <div className="navbar__backdrop" onClick={closeMobile} aria-hidden />}
-      {modalOpen && <IngestModal onClose={() => setModalOpen(false)} />}
+      <IngestModal isOpen={modalOpen} onClose={() => setModalOpen(false)} />
     </>
   );
 }

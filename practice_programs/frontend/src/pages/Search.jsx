@@ -199,7 +199,7 @@ export default function Search() {
                     <h3 className="entry-card__title">{r.title}</h3>
                     {r.summary && <p className="entry-card__summary">{r.summary}</p>}
                     <div className="topic-tags">
-                      {(r.topics || []).map((t, j) => (
+                      {(Array.isArray(r.topics) ? r.topics : (typeof r.topics === 'string' ? (r.topics.startsWith('[') ? JSON.parse(r.topics) : r.topics.split(',')) : [])).map((t, j) => (
                         <span key={j} className="topic-tag">{String(t).trim()}</span>
                       ))}
                     </div>

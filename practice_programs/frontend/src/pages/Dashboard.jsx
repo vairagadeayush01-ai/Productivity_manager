@@ -101,6 +101,22 @@ export default function Dashboard() {
     }
   };
 
+  const reindexSearch = async () => {
+    setSyncing(true);
+    setSyncMessage('Rebuilding search index…');
+    try {
+      const res = await api.reindexEntries();
+      setSyncMessage(`✓ ${res.message}`);
+      await refreshToday();
+    } catch (e) {
+      setSyncMessage('Reindex failed. ' + (e.response?.data?.detail || e.message));
+    }
+    finally {
+      setSyncing(false);
+      setTimeout(() => setSyncMessage(''), 8000);
+    }
+  };
+
   if (loading) return <DashboardSkeleton />;
 
   const dueList = dueTopics.map(t => (typeof t === 'string' ? t : t.topic)).filter(Boolean);
@@ -191,6 +207,26 @@ export default function Dashboard() {
           {syncMessage}
         </div>
       )}
+
+      {/* ── Maintenance buttons ── */}
+      <div style={{ display: 'flex', gap: '8px', marginBottom: 'var(--space-lg)', flexWrap: 'wrap' }}>
+        <button
+          onClick={syncAll}
+          disabled={syncing}
+          className="btn-secondary"
+          style={{ fontSize: '0.8125rem', opacity: syncing ? 0.6 : 1 }}
+        >
+          {syncing ? 'Syncing…' : 'Sync GitHub & LeetCode'}
+        </button>
+        <button
+          onClick={reindexSearch}
+          disabled={syncing}
+          className="btn-secondary"
+          style={{ fontSize: '0.8125rem', opacity: syncing ? 0.6 : 1 }}
+        >
+          {syncing ? 'Reindexing…' : 'Rebuild Search Index'}
+        </button>
+      </div>
 
       {/* ── Today's Learning ── */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--space-md)' }}>

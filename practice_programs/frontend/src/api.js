@@ -28,11 +28,13 @@ client.interceptors.response.use(
 export function setAuthToken(token, user) {
   localStorage.setItem('pm_token', token);
   if (user) localStorage.setItem('pm_user', JSON.stringify(user));
+  document.documentElement.setAttribute('data-pm-token', token);
 }
 
 export function clearAuthToken() {
   localStorage.removeItem('pm_token');
   localStorage.removeItem('pm_user');
+  document.documentElement.removeAttribute('data-pm-token');
 }
 
 export function getStoredUser() {
@@ -97,6 +99,10 @@ export const api = {
     const params = { q: query, n };
     if (source_type) params.source_type = source_type;
     const res = await client.get('/search/', { params });
+    return res.data;
+  },
+  reindexEntries: async () => {
+    const res = await client.post('/search/reindex');
     return res.data;
   },
   getStats: async () => {

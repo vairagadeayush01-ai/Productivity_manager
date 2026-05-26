@@ -1,16 +1,21 @@
 {
   "manifest_version": 3,
-  "name": "YT AI Learning Tracker",
-  "version": "1.0.0",
-  "description": "Detects and tracks educational YouTube videos.",
+  "name": "Antigravity — AI Learning Tracker",
+  "version": "2.0.0",
+  "description": "Tracks educational YouTube videos and LeetCode solutions with offline-first sync.",
   "permissions": [
     "storage",
     "tabs",
-    "scripting"
+    "scripting",
+    "alarms",
+    "unlimitedStorage"
   ],
   "host_permissions": [
     "*://*.youtube.com/*",
-    "http://localhost:8000/*"
+    "*://*.leetcode.com/*",
+    "http://localhost:8000/*",
+    "http://localhost:5173/*",
+    "http://127.0.0.1:5173/*"
   ],
   "content_scripts": [
     {
@@ -22,13 +27,18 @@
       "matches": ["*://*.youtube.com/*"],
       "js": ["content.js"],
       "run_at": "document_idle"
+    },
+    {
+      "matches": ["*://*.leetcode.com/problems/*"],
+      "js": ["leetcode_content.js"],
+      "run_at": "document_idle"
     }
   ],
   "background": {
     "service_worker": "background.js"
   },
   "action": {
-    "default_title": "YT AI Learning Tracker"
+    "default_title": "Antigravity Learning Tracker"
   },
   "icons": {}
 }

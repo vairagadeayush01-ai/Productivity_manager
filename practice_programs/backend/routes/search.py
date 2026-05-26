@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from core.deps import get_current_user
 from database import LearningEntry, User, get_db
-from services import vector_store, stats_service
+from services import vector_store, stats_service, entry_store
 from utils.datetime_helpers import today_start_end
 
 router = APIRouter(prefix="/search", tags=["search"])
@@ -24,31 +24,36 @@ async def search_entries(
     current_user: User = Depends(get_current_user),
 ):
     """Semantic vector search across all learning entries."""
-    results = vector_store.search(query=q, n_results=n * 2, user_id=current_user.id)
-    if not results:
-        return {"query": q, "results": [], "message": "Nothing found yet."}
+    try:
+        results = vector_store.search(query=q, n_results=n * 2, user_id=current_user.id)
+        if not results:
+            return {"query": q, "results": [], "message": "Nothing found yet."}
 
-    # Apply source_type post-filter if requested
-    if source_type and source_type in _SOURCE_TYPES:
-        results = [r for r in results if r["metadata"].get("source_type") == source_type]
+        # Apply source_type post-filter if requested
+        if source_type and source_type in _SOURCE_TYPES:
+            results = [r for r in results if r["metadata"].get("source_type") == source_type]
 
-    results = results[:n]
+        results = results[:n]
 
-    return {
-        "query": q,
-        "results": [
-            {
-                "id": r["id"],
-                "title": r["metadata"].get("title", ""),
-                "source_type": r["metadata"].get("source_type", ""),
-                "topics": r["metadata"].get("topics", ""),
-                "date": r["metadata"].get("date", ""),
-                "summary": r["document"][:300],
-                "relevance_score": round(1 - r["distance"], 3),
-            }
-            for r in results
-        ],
-    }
+        return {
+            "query": q,
+            "results": [
+                {
+                    "id": r["id"],
+                    "title": r["metadata"].get("title", ""),
+                    "source_type": r["metadata"].get("source_type", ""),
+                    "topics": r["metadata"].get("topics", ""),
+                    "date": r["metadata"].get("date", ""),
+                    "summary": r["document"][:300] if r.get("document") else "",
+                    "relevance_score": round(1 - r.get("distance", 0), 3),
+                }
+                for r in results
+            ],
+        }
+    except Exception as e:
+        logger.error(f"Search error for user {current_user.id}: {e}")
+        return {"query": q, "results": [], "error": "Search failed. Please try again."}
+
 
 
 @router.get("/today")
@@ -182,4 +187,46 @@ async def get_stats(
         "top_topics": top_topics,
     }
 
+
+@router.post("/reindex")
+async def reindex_entries(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Re-index all entries for current user (for migration from old unindexed entries)."""
+    entries = db.query(LearningEntry).filter(LearningEntry.user_id == current_user.id).all()
+
+    reindexed_count = 0
+    for entry in entries:
+        if not entry.summary:
+            continue
+        topics = entry.topics.split(", ") if entry.topics else []
+        embed_text = f"Title: {entry.title}\nSummary: {entry.summary}\nTopics: {', '.join(topics)}"
+
+        chroma_id = f"{current_user.id}_{entry.id}"
+        metadata = {
+            "user_id": str(current_user.id),
+            "source_type": entry.source_type,
+            "title": entry.title[:200],
+            "url": entry.source_url or "",
+            "topics": entry.topics,
+            "date": date_type.today().isoformat(),
+        }
+
+        try:
+            vector_store.collection.delete(ids=[chroma_id])
+        except Exception:
+            pass
+
+        vector_store.add_entry(chroma_id, embed_text, metadata)
+        entry.chroma_id = chroma_id
+        reindexed_count += 1
+
+    db.commit()
+
+    return {
+        "status": "completed",
+        "reindexed_count": reindexed_count,
+        "message": f"Re-indexed {reindexed_count} entries for search"
+    }
 

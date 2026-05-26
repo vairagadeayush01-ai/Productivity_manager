@@ -3,8 +3,10 @@ import { useLocation } from 'react-router-dom';
 import { api } from '../api';
 import {
   Gamepad2, CheckCircle2, XCircle, Zap, BarChart3,
-  ChevronRight, Trophy, Target, AlertTriangle
+  ChevronRight, Trophy, Target, AlertTriangle, Sparkles,
+  BookOpen, Code2, GitBranch, CirclePlay, StickyNote, FileText,
 } from 'lucide-react';
+
 
 const DIFFICULTY_CONFIG = {
   easy:   { label: 'Easy',   color: '#22c55e', bg: 'rgba(34,197,94,0.12)',   border: 'rgba(34,197,94,0.3)' },
@@ -15,21 +17,59 @@ const DIFFICULTY_CONFIG = {
 const LEVEL_ICON = { strong: <Trophy size={16} color="#22c55e" />, intermediate: <Target size={16} color="#f59e0b" />, weak: <AlertTriangle size={16} color="#ef4444" /> };
 const LEVEL_COLOR = { strong: '#22c55e', intermediate: '#f59e0b', weak: '#ef4444' };
 
+const SOURCE_ICONS = {
+  youtube:  <CirclePlay size={11} />,
+  leetcode: <Code2      size={11} />,
+  github:   <GitBranch  size={11} />,
+  manual:   <StickyNote size={11} />,
+  pdf:      <FileText   size={11} />,
+  webpage:  <FileText   size={11} />,
+};
+const SOURCE_COLORS = {
+  youtube: '#EF4444', leetcode: '#FFA116', github: '#24292F',
+  manual: '#6366F1', pdf: '#3B82F6', webpage: '#10B981',
+};
+
+function SourceAttribution({ sources }) {
+  if (!sources || sources.length === 0) return null;
+  return (
+    <div className="quiz-sources">
+      <p className="quiz-sources__label">Sources used to generate these questions:</p>
+      <div className="quiz-sources__grid">
+        {sources.map((s, i) => (
+          <div key={i} className="quiz-source-chip">
+            <span style={{ color: SOURCE_COLORS[s.source_type] || '#6B7280' }}>
+              {SOURCE_ICONS[s.source_type] || <FileText size={11} />}
+            </span>
+            <span className="quiz-source-chip__title">{s.title}</span>
+            <span className="quiz-source-chip__type">{s.source_type}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+
 export default function Quiz() {
   const location  = useLocation();
   const queryParams = new URLSearchParams(location.search);
   const topicParam  = queryParams.get('topic');
 
   // -- Controls ----------------------------------------------
+  const [quizMode, setQuizMode]     = useState('recent');   // 'recent' | 'smart'
+  const [smartTopic, setSmartTopic] = useState('');
   const [difficulty, setDifficulty] = useState('medium');
   const [numQuestions, setNumQuestions] = useState(10);
   const [days, setDays] = useState(7);
 
   // -- Quiz state --------------------------------------------
   const [quizData, setQuizData]     = useState(null);
+  const [sources, setSources]       = useState([]);          // smart quiz sources
   const [loading, setLoading]       = useState(false);
   const [error, setError]           = useState(null);
   const [generated, setGenerated]   = useState(false);
+
 
   // -- Answering state ---------------------------------------
   const [currentIdx, setCurrentIdx] = useState(0);
@@ -54,33 +94,58 @@ export default function Quiz() {
   }, [topicParam]);
 
   async function generateQuiz() {
+    if (quizMode === 'smart' && !smartTopic.trim()) {
+      setError('Enter a topic to generate a Smart Quiz.');
+      return;
+    }
     setLoading(true);
     setError(null);
     setGenerated(false);
     setQuizData(null);
+    setSources([]);
     setCurrentIdx(0);
     setSelectedOpt('');
     setFeedback(null);
     setScore(0);
     setAnswers([]);
     try {
-      const data = topicParam
-        ? await api.getTopicReviewQuiz(topicParam, difficulty, numQuestions)
-        : await api.getRecentQuiz(difficulty, numQuestions, days);
+      let data;
+      if (quizMode === 'smart') {
+        // Smart Quiz: semantic retrieval across all source types
+        const token = localStorage.getItem('pm_token');
+        const API = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+        const resp = await fetch(
+          `${API}/quiz/contextual?topic=${encodeURIComponent(smartTopic.trim())}&difficulty=${difficulty}&n=${numQuestions}`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => ({}));
+          throw Object.assign(new Error(err.detail || `HTTP ${resp.status}`), { response: { status: resp.status } });
+        }
+        data = await resp.json();
+        setSources(data.sources || []);
+      } else {
+        data = topicParam
+          ? await api.getTopicReviewQuiz(topicParam, difficulty, numQuestions)
+          : await api.getRecentQuiz(difficulty, numQuestions, days);
+      }
       setQuizData(data);
       setGenerated(true);
     } catch (err) {
       if (err.response?.status === 404) {
-        setError(topicParam
+        setError(quizMode === 'smart'
+          ? `No learning history found for "${smartTopic}". Add some content first.`
+          : topicParam
           ? `No notes found for "${topicParam}". Try adding more content.`
-          : "No entries logged recently! Add a note or YouTube video first.");
+          : 'No entries logged recently! Add a note or YouTube video first.');
       } else {
-        setError("Failed to generate quiz: " + (err.response?.data?.detail || err.message));
+        setError('Failed to generate quiz: ' + (err.response?.data?.detail || err.message));
       }
     } finally {
       setLoading(false);
     }
   }
+
 
   const handleAnswer = async () => {
     if (!selectedOpt) return;
@@ -137,19 +202,59 @@ export default function Quiz() {
           <PerformanceView perf={perf} />
         ) : (
           <div className="glass-card" style={{ padding: '2.5rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '2rem' }}>
-              <div style={{ padding: '1rem', background: 'rgba(99,102,241,0.2)', borderRadius: '12px' }}>
-                <Gamepad2 color="var(--primary-glow)" size={28} />
+            {/* Mode toggle */}
+            <div className="quiz-mode-toggle">
+              <button
+                className={`quiz-mode-btn ${quizMode === 'recent' ? 'quiz-mode-btn--active' : ''}`}
+                onClick={() => setQuizMode('recent')}
+              >
+                <Gamepad2 size={15} /> Recent Quiz
+              </button>
+              <button
+                className={`quiz-mode-btn ${quizMode === 'smart' ? 'quiz-mode-btn--active quiz-mode-btn--smart' : ''}`}
+                onClick={() => setQuizMode('smart')}
+              >
+                <Sparkles size={15} /> Smart Quiz
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem' }}>
+              <div style={{ padding: '1rem', background: quizMode === 'smart' ? 'rgba(139,92,246,0.2)' : 'rgba(99,102,241,0.2)', borderRadius: '12px' }}>
+                {quizMode === 'smart' ? <Sparkles color="#8B5CF6" size={28} /> : <Gamepad2 color="var(--primary-glow)" size={28} />}
               </div>
               <div>
                 <h1 style={{ fontSize: '1.7rem' }}>
-                  {topicParam ? `Review: ${topicParam}` : "Recent Quiz"}
+                  {quizMode === 'smart' ? 'Smart Quiz' : (topicParam ? `Review: ${topicParam}` : 'Recent Quiz')}
                 </h1>
                 <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-                  {topicParam ? 'Topic-focused spaced repetition' : 'Generated from your past 7 days of learning'}
+                  {quizMode === 'smart'
+                    ? 'Searches your YouTube notes, LeetCode solutions, and GitHub commits'
+                    : topicParam ? 'Topic-focused spaced repetition' : 'Generated from your past learning'}
                 </p>
               </div>
             </div>
+
+            {/* Smart quiz: topic input */}
+            {quizMode === 'smart' && (
+              <div style={{ marginBottom: '1.5rem' }}>
+                <label style={{ color: 'var(--text-muted)', fontSize: '0.85rem', display: 'block', marginBottom: '0.5rem', fontWeight: 600 }}>
+                  Topic to quiz on
+                </label>
+                <input
+                  id="smart-quiz-topic"
+                  className="glass-input"
+                  style={{ width: '100%' }}
+                  placeholder="e.g. binary search, BFS, React hooks, dynamic programming…"
+                  value={smartTopic}
+                  onChange={e => setSmartTopic(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && generateQuiz()}
+                />
+                <p style={{ fontSize: '0.75rem', color: 'var(--text-faint)', marginTop: '0.4rem' }}>
+                  Semantic search retrieves your YouTube lectures, LeetCode solutions, and GitHub commits on this topic.
+                </p>
+              </div>
+            )}
+
 
             {error && (
               <div style={{
@@ -161,88 +266,47 @@ export default function Quiz() {
               </div>
             )}
 
-            {/* Difficulty */}
-            <div style={{ marginBottom: '1.5rem' }}>
-              <label style={{ color: 'var(--text-muted)', fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '0.75rem' }}>
-                Difficulty
-              </label>
-              <div style={{ display: 'flex', gap: '0.75rem' }}>
-                {Object.entries(DIFFICULTY_CONFIG).map(([key, cfg]) => (
-                  <button
-                    key={key}
-                    onClick={() => setDifficulty(key)}
-                    style={{
-                      flex: 1, padding: '0.75rem', borderRadius: '12px', cursor: 'pointer',
-                      border: `1.5px solid ${difficulty === key ? cfg.color : 'rgba(255,255,255,0.08)'}`,
-                      background: difficulty === key ? cfg.bg : 'rgba(255,255,255,0.03)',
-                      color: difficulty === key ? cfg.color : 'var(--text-muted)',
-                      fontWeight: difficulty === key ? 600 : 400, transition: 'all 0.2s',
-                      fontSize: '0.9rem'
-                    }}
-                  >
-                    {cfg.label}
-                  </button>
-                ))}
+            {/* Recent quiz: timeframe (only shown in Recent mode) */}
+            {quizMode === 'recent' && (
+              <div style={{ marginBottom: '2rem' }}>
+                <label style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem', color: 'var(--text-main)', fontWeight: 500, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  <span>Timeframe</span>
+                  <span style={{ color: 'var(--primary-glow)' }}>Last {days} days</span>
+                </label>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
+                  {[3, 7, 30].map((d) => (
+                    <button
+                      key={d}
+                      type="button"
+                      onClick={() => setDays(d)}
+                      style={{
+                        padding: '0.8rem', borderRadius: '12px',
+                        border: `1.5px solid ${days === d ? 'var(--primary)' : 'rgba(255,255,255,0.08)'}`,
+                        background: days === d ? 'var(--primary-light)' : 'rgba(255,255,255,0.03)',
+                        color: days === d ? 'var(--primary)' : 'var(--text-muted)',
+                        fontWeight: days === d ? 600 : 400, transition: 'all 0.2s',
+                      }}
+                    >
+                      {d} Days
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
-
-            {/* Number of questions */}
-            <div style={{ marginBottom: '2rem' }}>
-              <label style={{ color: 'var(--text-muted)', fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '0.75rem' }}>
-                Questions: <span style={{ color: 'var(--text-main)', fontWeight: 600 }}>{numQuestions}</span>
-              </label>
-              <input
-                type="range"
-                min={5}
-                max={40}
-                step={5}
-                value={numQuestions}
-                onChange={e => setNumQuestions(Number(e.target.value))}
-                style={{ width: '100%', accentColor: 'var(--primary-glow)' }}
-              />
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-                <span>5</span><span>10</span><span>15</span><span>20</span><span>25</span><span>30</span><span>35</span><span>40</span>
-              </div>
-            </div>
-
-            {/* Timeframe */}
-            <div style={{ marginBottom: '2rem' }}>
-              <label style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem', color: 'var(--text-main)', fontWeight: 500, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                <span>Timeframe</span>
-                <span style={{ color: 'var(--primary-glow)' }}>Last {days} days</span>
-              </label>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
-                {[3, 7, 30].map((d) => (
-                  <button
-                    key={d}
-                    type="button"
-                    onClick={() => setDays(d)}
-                    style={{
-                      padding: '0.8rem', borderRadius: '12px',
-                      border: `1.5px solid ${days === d ? 'var(--primary)' : 'rgba(255,255,255,0.08)'}`,
-                      background: days === d ? 'var(--primary-light)' : 'rgba(255,255,255,0.03)',
-                      color: days === d ? 'var(--primary)' : 'var(--text-muted)',
-                      fontWeight: days === d ? 600 : 400, transition: 'all 0.2s',
-                    }}
-                  >
-                    {d} Days
-                  </button>
-                ))}
-              </div>
-            </div>
+            )}
 
             <button
               className="btn-primary"
               onClick={generateQuiz}
               style={{ width: '100%', padding: '1rem', fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.6rem' }}
             >
-              <Zap size={18} /> Generate Quiz Now
+              {quizMode === 'smart' ? <><Sparkles size={18} /> Generate Smart Quiz</> : <><Zap size={18} /> Generate Quiz Now</>}
             </button>
           </div>
         )}
       </div>
     );
   }
+
 
   // -- Render: Loading ---------------------------------------
   if (loading) {
@@ -316,9 +380,16 @@ export default function Quiz() {
   if (!quizData) return null;
   const q    = quizData.questions[currentIdx];
   const diff = DIFFICULTY_CONFIG[q?.difficulty || difficulty] || DIFFICULTY_CONFIG.medium;
+  const currentSourceTitle = q?.source_title;
+  const matchedSource = sources.find(s => s.title === currentSourceTitle) || null;
 
   return (
     <div className="animate-fade-in" style={{ maxWidth: '800px', margin: '0 auto' }}>
+      {/* Smart Quiz: source attribution banner */}
+      {quizMode === 'smart' && sources.length > 0 && currentIdx === 0 && (
+        <SourceAttribution sources={sources} />
+      )}
+
       {/* Header row */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '0.75rem' }}>
         <div>

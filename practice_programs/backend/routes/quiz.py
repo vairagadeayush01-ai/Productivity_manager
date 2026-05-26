@@ -12,6 +12,7 @@ from utils.datetime_helpers import today_start_end
 router = APIRouter(prefix="/quiz", tags=["quiz"])
 
 
+
 class AnswerRequest(BaseModel):
     question: str = Field(..., min_length=1)
     topic: str = Field(..., min_length=1)
@@ -167,4 +168,54 @@ async def get_quiz_performance(
             "correct": total_ok,
             "pct": round(total_ok / total_q * 100) if total_q else 0,
         },
+    }
+
+
+# ─── Phase 3.2: Smart Quiz (contextual, all source types) ─────────────────────
+
+@router.get("/contextual")
+@limiter.limit("5/minute")
+async def get_contextual_quiz(
+    request: Request,
+    topic: str = Query(..., min_length=2, max_length=100,
+                       description="Topic to quiz on, e.g. 'binary search', 'BFS', 'React hooks'"),
+    difficulty: str = Query("medium", enum=["easy", "medium", "hard"]),
+    n: int = Query(15, ge=5, le=30),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Smart Quiz — generates questions grounded in the user's actual learning history.
+
+    Searches across ALL source types (YouTube lectures, LeetCode solutions,
+    GitHub commits) for entries related to the topic, then generates questions
+    that reference the user's specific notes and solutions.
+
+    Returns questions AND the source entries that were used — frontend shows
+    'From: [title]' attribution cards after each answer.
+    """
+    questions, sources = quiz_service.generate_contextual_quiz(
+        topic=topic,
+        user_id=current_user.id,
+        n_questions=n,
+        difficulty=difficulty,
+    )
+
+    if not sources:
+        raise HTTPException(
+            404,
+            f"No learning history found for '{topic}'. "
+            "Watch a YouTube video, solve a LeetCode problem, or sync your GitHub commits first."
+        )
+
+    if not questions:
+        raise HTTPException(502, "Could not generate quiz questions. Check your Groq API key.")
+
+    return {
+        "topic":      topic,
+        "difficulty": difficulty,
+        "questions":  questions,
+        "total":      len(questions),
+        "sources":    sources,
+        "source_count": len(sources),
     }

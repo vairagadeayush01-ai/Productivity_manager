@@ -166,3 +166,119 @@ Return ONLY a valid JSON array:
 ]"""
 
     return _parse_json_list(_call_groq(prompt, max_tokens=3000))
+
+
+# ─── Phase 3.2: Contextual quiz (all source types) ────────────────────────────
+
+def generate_contextual_quiz(
+    topic: str,
+    user_id: int,
+    n_questions: int = 15,
+    difficulty: str = "medium",
+) -> tuple[list[dict], list[dict]]:
+    """
+    Generates quiz questions grounded in the user's ACTUAL learning history
+    across ALL source types: YouTube lectures, LeetCode solutions, GitHub commits.
+
+    Steps:
+      1. Semantic search: retrieve top-10 entries related to topic
+      2. Build rich context from those entries (title + summary + source type)
+      3. Generate questions that specifically reference the user's own work
+      4. Return (questions, sources) — sources let frontend show "From: [title]"
+
+    Returns:
+      (questions: list[dict], sources: list[dict])
+      sources: [{ id, title, source_type, date, snippet }]
+    """
+    from services import vector_store  # lazy import to avoid circular
+
+    # 1. Retrieve relevant entries from all source types
+    raw = vector_store.search(query=topic, n_results=10, user_id=user_id)
+
+    if not raw:
+        return [], []
+
+    # 2. Assemble context + source list
+    sources = []
+    context_lines = []
+    for r in raw:
+        meta        = r.get("metadata", {})
+        doc         = r.get("document", "")
+        title       = meta.get("title", "Untitled")
+        source_type = meta.get("source_type", "manual")
+        date        = meta.get("date", "")
+
+        sources.append({
+            "id":          r["id"],
+            "title":       title,
+            "source_type": source_type,
+            "date":        date,
+            "snippet":     doc[:200],
+        })
+
+        type_label = {
+            "youtube":  "YouTube lecture",
+            "leetcode": "LeetCode solution",
+            "github":   "GitHub commit",
+        }.get(source_type, "note")
+
+        context_lines.append(
+            f"• [{type_label.upper()}] {title}"
+            + (f" ({date})" if date else "")
+            + f"\n  {doc[:400]}"
+        )
+
+    context = "\n\n".join(context_lines)
+
+    diff_instructions = {
+        "easy":   "Focus on recall and recognition of key concepts.",
+        "medium": "Focus on application, comparison, and understanding how concepts connect.",
+        "hard":   "Focus on deep analysis, edge cases, implementation tradeoffs, and connections between multiple concepts.",
+    }
+    diff_instr = diff_instructions.get(difficulty, diff_instructions["medium"])
+
+    prompt = f"""You are a quiz generator for a developer who is studying: "{topic}"
+
+Here is their actual learning history on this topic — from YouTube videos they watched, LeetCode problems they solved, and GitHub commits they made:
+
+{context}
+
+Generate exactly {n_questions} multiple choice questions that TEST their understanding of this specific material.
+
+DIFFICULTY: {difficulty.upper()} — {diff_instr}
+
+STRICT RULES:
+- Base EVERY question on the content above. Reference specific algorithms, patterns, or code they actually encountered.
+- Each question must have exactly 4 options (A, B, C, D)
+- Only one correct answer
+- Wrong options must be plausible and tricky
+- Include "why" and "how" questions, not just "what"
+- Vary question styles: conceptual, implementation, complexity analysis, comparison
+- Include a "source_title" field referencing which entry the question came from
+- No two questions should test the same fact
+
+Return ONLY a valid JSON array:
+[
+  {{
+    "question": "question text",
+    "options": ["option A", "option B", "option C", "option D"],
+    "answer": "exact text of correct option",
+    "explanation": "concise 1-2 sentence explanation",
+    "topic": "{topic}",
+    "difficulty": "{difficulty}",
+    "source_title": "title of the source entry this question is based on"
+  }}
+]"""
+
+    raw_questions = _parse_json_list(_call_groq(prompt, max_tokens=5000))
+
+    # Deduplicate
+    seen: set[str] = set()
+    unique: list[dict] = []
+    for q in raw_questions:
+        key = q.get("question", "").strip().lower()
+        if key and key not in seen:
+            seen.add(key)
+            unique.append(q)
+
+    return unique[:n_questions], sources

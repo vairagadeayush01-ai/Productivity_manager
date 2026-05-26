@@ -20,7 +20,7 @@ from sqlalchemy import (
     text,
 )
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import sessionmaker, relationship
 
 load_dotenv()
 
@@ -55,6 +55,16 @@ class User(Base):
     email = Column(String, unique=True, index=True, nullable=False)
     password_hash = Column(String, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
+    # ── Phase 2.1 profile fields (added via migration 003) ─────────────────
+    username = Column(String, unique=True, nullable=True)
+    display_name = Column(String, nullable=True)
+    github_username = Column(String, nullable=True)
+    github_pat_enc = Column(Text, nullable=True)      # AES-256-GCM encrypted PAT
+    leetcode_username = Column(String, nullable=True)
+    extension_installed = Column(Boolean, default=False, nullable=True)
+    last_sync_at = Column(DateTime, nullable=True)
+    google_credentials_enc = Column(Text, nullable=True)  # AES encrypted JSON token
+
 
 
 class LearningEntry(Base):
@@ -120,12 +130,137 @@ class DailyDiary(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class RefreshToken(Base):
+    """
+    DB-backed refresh token for JWT rotation.
+    token_hash stores bcrypt hash of the opaque token string.
+    Revoked tokens kept for audit trail; a cleanup job can purge expired ones.
+    """
+    __tablename__ = "refresh_tokens"
+    __table_args__ = (
+        Index("idx_refresh_token_user", "user_id"),
+        Index("idx_refresh_token_expires", "expires_at"),
+    )
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    token_hash = Column(String(255), unique=True, nullable=False)
+    device_info = Column(String(500), nullable=True)
+    expires_at = Column(DateTime, nullable=False)
+    revoked_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class ActivitySyncQueue(Base):
+    """
+    Offline-first queue for activities submitted from the Chrome extension.
+
+    Lifecycle:
+      pending   → being processed by sync_queue service
+      done      → successfully converted to a LearningEntry
+      failed    → exceeded max_retries or unrecoverable error
+
+    dedupe_key = sha256(activity_type:source_id:date_utc) set by the extension.
+    The UNIQUE constraint on dedupe_key ensures idempotent processing.
+
+    user_id is nullable because the extension may queue activities before
+    the user has authenticated. The sync endpoint resolves user_id from the JWT.
+    """
+    __tablename__ = "activity_sync_queue"
+    __table_args__ = (
+        Index("idx_sync_queue_status_created", "status", "created_at"),
+        Index("idx_sync_queue_user_status", "user_id", "status"),
+        UniqueConstraint("dedupe_key", name="uq_activity_dedupe_key"),
+    )
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    device_id = Column(String(100), nullable=False)
+    # youtube_watch | leetcode_solve
+    activity_type = Column(String(50), nullable=False)
+    # Raw JSON payload from extension
+    payload = Column(Text, nullable=False)
+    # sha256 fingerprint — prevents double-processing
+    dedupe_key = Column(String(64), nullable=False)
+    retry_count = Column(Integer, default=0, nullable=False)
+    max_retries = Column(Integer, default=5, nullable=False)
+    # pending | processing | done | failed
+    status = Column(String(20), default="pending", nullable=False)
+    error_message = Column(Text, nullable=True)
+    last_attempt_at = Column(DateTime, nullable=True)
+    processed_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+
+# ─── Phase 2 Models ───────────────────────────────────────────────────────────
+
+class QuizSession(Base):
+    """Tracks a full quiz session (multiple questions, session-level analytics)."""
+    __tablename__ = "quiz_sessions"
+    __table_args__ = (Index("idx_quiz_session_user_started", "user_id", "started_at"),)
+    id              = Column(Integer, primary_key=True, index=True)
+    user_id         = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    session_type    = Column(String(30))       # daily | topic_deep_dive | review
+    topic           = Column(String, nullable=True)
+    status          = Column(String(20), default="active")  # active | completed | abandoned
+    total_questions = Column(Integer, default=0)
+    correct_count   = Column(Integer, default=0)
+    started_at      = Column(DateTime, default=datetime.utcnow)
+    completed_at    = Column(DateTime, nullable=True)
+
+
+class TutorConversation(Base):
+    """An AI tutor conversation session — expires after 24h."""
+    __tablename__ = "tutor_conversations"
+    __table_args__ = (Index("idx_tutor_conv_user", "user_id"),)
+    id           = Column(Integer, primary_key=True, index=True)
+    user_id      = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    context_type = Column(String(50))     # quiz_followup | general | topic_deep_dive
+    source_ref   = Column(Text, nullable=True)   # JSON — what triggered this
+    expires_at   = Column(DateTime)              # created_at + 24h
+    created_at   = Column(DateTime, default=datetime.utcnow)
+    # ── Phase 3.3: distillation lifecycle ─────────────────────────────────
+    distilled_summary = Column(Text, nullable=True)   # Groq-generated key insights after expiry
+    distilled_at      = Column(DateTime, nullable=True)  # when distillation ran
+
+
+class TutorMessage(Base):
+    """Individual message in a tutor conversation."""
+    __tablename__ = "tutor_messages"
+    __table_args__ = (Index("idx_tutor_msg_conv", "conversation_id"),)
+    id              = Column(Integer, primary_key=True, index=True)
+    conversation_id = Column(Integer, ForeignKey("tutor_conversations.id", ondelete="CASCADE"), nullable=False)
+    role            = Column(String(20))   # user | assistant
+    content         = Column(Text)
+    source_refs     = Column(Text, default="[]")  # JSON array of cited source entries
+    created_at      = Column(DateTime, default=datetime.utcnow)
+
+
+class CalendarEvent(Base):
+    """Learning-related calendar events, optionally synced to Google Calendar."""
+    __tablename__ = "calendar_events"
+    __table_args__ = (Index("idx_calendar_user_time", "user_id", "start_time"),)
+    id              = Column(Integer, primary_key=True, index=True)
+    user_id         = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    google_event_id = Column(String, nullable=True)   # set after Google Calendar sync
+    title           = Column(String, nullable=False)
+    description     = Column(Text, nullable=True)
+    start_time      = Column(DateTime, nullable=False)
+    end_time        = Column(DateTime, nullable=False)
+    status          = Column(String(20), default="pending")  # pending | synced | failed
+    created_at      = Column(DateTime, default=datetime.utcnow)
+
+
 _TABLES_NEEDING_USER_ID = (
+
     "learning_entries",
     "quiz_results",
     "topic_reviews",
     "streaks",
     "daily_diaries",
+    # New tables added in Phase 1.1 already have correct schema
+    # activity_sync_queue and refresh_tokens are excluded here
 )
 
 

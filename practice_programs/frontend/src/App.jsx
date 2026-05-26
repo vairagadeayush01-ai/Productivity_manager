@@ -10,6 +10,9 @@ import SemanticSearch from './pages/Search';
 import HistoryFeed from './pages/History';
 import Report from './pages/Report';
 import DiaryReader from './pages/DiaryReader';
+import Profile from './pages/Profile';
+import Planner from './pages/Planner';
+import Chat from './pages/Chat';
 import Login from './pages/Login';
 import './index.css';
 
@@ -30,6 +33,9 @@ function AppRoutes() {
           <Route path="/history"     element={<ProtectedRoute><HistoryFeed /></ProtectedRoute>} />
           <Route path="/diary/:date" element={<ProtectedRoute><DiaryReader /></ProtectedRoute>} />
           <Route path="/report"      element={<ProtectedRoute><Report /></ProtectedRoute>} />
+          <Route path="/profile"     element={<ProtectedRoute><Profile /></ProtectedRoute>} />
+          <Route path="/planner"     element={<ProtectedRoute><Planner /></ProtectedRoute>} />
+          <Route path="/chat"        element={<ProtectedRoute><Chat /></ProtectedRoute>} />
           <Route path="*"            element={<Navigate to="/" replace />} />
         </Routes>
       </main>

@@ -79,6 +79,8 @@ async def sync_youtube_tracking(
     current_user: User = Depends(get_current_user),
 ):
     url = f"https://www.youtube.com/watch?v={req.videoId}"
+    metadata_dict = req.model_dump()
+
     existing = (
         db.query(LearningEntry)
         .filter(
@@ -88,14 +90,20 @@ async def sync_youtube_tracking(
         )
         .first()
     )
-    metadata_dict = req.model_dump()
 
     if existing:
-        existing.metadata_json = json.dumps(metadata_dict)
         # Generate a summary from metadata if not already present
         if not existing.summary:
-            existing.summary = f"Watched: {req.title} by {req.channel} ({req.completion}% watched)"
-            existing.topics = "youtube,tutorial"
+            summary_text = f"Watched: {req.title} by {req.channel} ({req.completion}% watched)"
+            summary_result = {
+                "summary": summary_text,
+                "topics": ["youtube", "tutorial"],
+                "key_concepts": []
+            }
+            entry_store.update_entry_from_summary(db, existing, "", summary_result)
+        existing.metadata_json = json.dumps(metadata_dict)
+        from datetime import datetime
+        existing.created_at = datetime.utcnow()
         db.commit()
         return {"status": "updated", "id": existing.id}
 
@@ -106,25 +114,31 @@ async def sync_youtube_tracking(
     )
     if summarized:
         summarized.metadata_json = json.dumps(metadata_dict)
+        if not summarized.raw_content:
+            summarized.summary = f"Watched: {req.title} by {req.channel} ({req.completion}% watched)"
+            summarized.title = req.title
+        from datetime import datetime
+        summarized.created_at = datetime.utcnow()
         db.commit()
         return {"status": "updated_existing", "id": summarized.id}
 
     # Generate summary from metadata for visibility on dashboard
     summary_text = f"Watched: {req.title} by {req.channel} ({req.completion}% watched)"
-    entry = LearningEntry(
-        user_id=current_user.id,
-        source_type="youtube",
-        title=req.title,
-        source_url=url,
-        raw_content="",
-        summary=summary_text,
-        topics="youtube,tutorial",
-        metadata_json=json.dumps(metadata_dict),
+    summary_result = {
+        "summary": summary_text,
+        "topics": ["youtube", "tutorial"],
+        "key_concepts": []
+    }
+    result = entry_store.save_entry(
+        db, current_user.id, "youtube", req.title, url, "", summary_result
     )
-    db.add(entry)
-    db.commit()
-    db.refresh(entry)
-    return {"status": "created_for_batch", "id": entry.id}
+    # Store metadata after creating the entry
+    entry = db.query(LearningEntry).filter(LearningEntry.id == result["id"]).first()
+    if entry:
+        entry.metadata_json = json.dumps(metadata_dict)
+        db.commit()
+
+    return {"status": "created_for_batch", "id": result["id"]}
 
 
 @router.post("/log")

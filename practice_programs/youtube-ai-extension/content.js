@@ -57,16 +57,12 @@ function setUserOverride(videoId, val) {
 
 // ── Send to backend ────────────────────────────────────────
 function sendToBackend(meta) {
-  var sentKey = "sent_" + meta.videoId;
-  chrome.storage.local.get([sentKey, "ytai_videos", "pm_token"], function(result) {
-    if (result[sentKey]) {
-      console.log("[YT-AI] Already sent:", meta.title);
-      return;
-    }
-    var token = result.pm_token;
+  var pctKey = "last_pct_" + meta.videoId;
+  chrome.storage.local.get([pctKey, "ytai_videos", "ag_access_token"], function(result) {
+    var token = result.ag_access_token;
     if (!token) {
-      console.warn("[YT-AI] No auth token found. Visit http://localhost:5173 to sync your session.");
-      showStatusToast("⚠ Login to dashboard first!");
+      console.log("[YT-AI] No auth token. Data saved locally and will sync when dashboard is opened.");
+      // Do not show an aggressive toast here, as the user might not want to log in immediately.
       return;
     }
     
@@ -91,6 +87,14 @@ function sendToBackend(meta) {
       };
     }
 
+    var lastPct = result[pctKey];
+    var currentPct = videoData.completion || 0;
+
+    // Only sync if first sync, or completion increased by >= 5%, or reached 100%
+    if (lastPct !== undefined && currentPct - lastPct < 5 && currentPct < 100) {
+      return;
+    }
+
     chrome.runtime.sendMessage({
       type: "SYNC_YOUTUBE",
       token: token,
@@ -104,7 +108,7 @@ function sendToBackend(meta) {
       
       if (response && response.success) {
         var o = {};
-        o[sentKey] = true;
+        o[pctKey] = currentPct;
         chrome.storage.local.set(o);
         showStatusToast("✓ Synced to learning tracker");
       } else {
@@ -112,7 +116,7 @@ function sendToBackend(meta) {
         console.warn("[YT-AI] Backend error:", errMsg);
         if (errMsg.includes("401")) {
           showStatusToast("⚠ Auth expired. Re-login to dashboard.");
-          chrome.storage.local.remove("pm_token");
+          chrome.storage.local.remove("ag_access_token");
         } else {
           showStatusToast("⚠ Could not reach backend");
         }
@@ -480,8 +484,8 @@ function cleanupOldVideos() {
       if (now - lastWatched > SEVEN_DAYS_MS) {
         delete videos[vid];
         
-        // Also clean up the sentKey and override flags to be perfectly clean
-        chrome.storage.local.remove(["sent_" + vid, "override_" + vid]);
+        // Also clean up tracking progress keys and override flags to be perfectly clean
+        chrome.storage.local.remove(["sent_" + vid, "last_pct_" + vid, "override_" + vid]);
         changed = true;
       }
     }

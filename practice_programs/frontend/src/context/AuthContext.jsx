@@ -26,6 +26,15 @@ export function AuthProvider({ children }) {
       .finally(() => setLoading(false));
   }, []);
 
+  useEffect(() => {
+    const token = localStorage.getItem('pm_token');
+    if (token) {
+      document.documentElement.setAttribute('data-pm-token', token);
+    } else {
+      document.documentElement.removeAttribute('data-pm-token');
+    }
+  }, [user]);
+
   const login = async (email, password) => {
     const data = await api.login(email, password);
     setAuthToken(data.access_token, data.user);
