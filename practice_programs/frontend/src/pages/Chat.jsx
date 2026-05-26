@@ -19,6 +19,8 @@
  *   data: [DONE]                  ← stream complete
  */
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import {
   MessageSquare, BookOpen, Send, RefreshCw, Clock,
   Cpu, ChevronRight, Info, AlertTriangle,
@@ -84,12 +86,13 @@ function CitationCard({ source }) {
   );
 }
 
-// ─── Parse streamed text: highlight [SOURCE: Title] markers ──────────────────
+// ─── Parse streamed text: render as proper markdown ──────────────────────────
 function MessageContent({ text }) {
-  // Replace [SOURCE: Title] with a highlighted span
+  // Pre-process: replace [SOURCE: Title] markers with a special tag
+  // then let ReactMarkdown handle the rest
   const parts = text.split(/(\[SOURCE:[^\]]+\])/g);
   return (
-    <span>
+    <>
       {parts.map((part, i) => {
         const match = part.match(/^\[SOURCE:(.+)\]$/);
         if (match) {
@@ -100,9 +103,21 @@ function MessageContent({ text }) {
             </span>
           );
         }
-        return <span key={i}>{part}</span>;
+        // Render non-source parts as markdown
+        return part ? (
+          <ReactMarkdown
+            key={i}
+            remarkPlugins={[remarkGfm]}
+            components={{
+              // Prevent wrapping in extra <p> when inline
+              p: ({ children }) => <p>{children}</p>,
+            }}
+          >
+            {part}
+          </ReactMarkdown>
+        ) : null;
       })}
-    </span>
+    </>
   );
 }
 

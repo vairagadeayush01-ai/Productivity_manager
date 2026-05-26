@@ -1,18 +1,45 @@
-# Secrets — never commit these
+# ── Secrets — NEVER commit these ─────────────────────────────────────────────
 .env
 .env.local
 .env.*.local
+*.env
 practice_programs/backend/.env
 practice_programs/frontend/.env
 practice_programs/frontend/.env.local
 
-# Templates are OK to commit (placeholders only, no real keys)
-# practice_programs/backend/.env.example
-# practice_programs/frontend/.env.example
+# ── Python ────────────────────────────────────────────────────────────────────
 __pycache__/
 *.py[cod]
+*.pyo
+*.pyd
+.Python
+.pytest_cache/
+*.egg-info/
+dist/
+build/
 .venv/
-practice_programs/backend/chroma_db/
+venv/
+env/
+
+# ── Databases — never expose user data ───────────────────────────────────────
 practice_programs/backend/*.db
+practice_programs/backend/*.sqlite
+practice_programs/backend/*.sqlite3
+practice_programs/backend/chroma_db/
+
+# ── Frontend build artifacts ──────────────────────────────────────────────────
 practice_programs/frontend/node_modules/
 practice_programs/frontend/dist/
+practice_programs/frontend/.vite/
+
+# ── OS / Editor ───────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/settings.json
+
+# ── Test / scratch files ──────────────────────────────────────────────────────
+test_password.cpp
+*.tmp

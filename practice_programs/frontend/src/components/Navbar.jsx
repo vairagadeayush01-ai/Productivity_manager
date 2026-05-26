@@ -8,14 +8,15 @@ import {
   Plus,
   History,
   BarChart3,
-  LogOut,
   Menu,
   X,
-  User,
   Cpu,
   Calendar,
+  Sun,
+  Moon,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
 import IngestModal from './IngestModal';
 
 const NAV_ITEMS = [
@@ -30,7 +31,8 @@ const NAV_ITEMS = [
 
 export default function Navbar() {
   const location = useLocation();
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
+  const { theme, toggleTheme } = useTheme();
   const [modalOpen, setModalOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -85,15 +87,15 @@ export default function Navbar() {
               {initial}
             </Link>
 
-            {/* Logout */}
+            {/* Theme toggle — round, right of avatar */}
             <button
               type="button"
-              className="btn-icon"
-              onClick={logout}
-              aria-label="Sign out"
-              title="Sign out"
+              className="theme-toggle-btn theme-toggle-btn--round"
+              onClick={toggleTheme}
+              aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+              title={theme === 'dark' ? 'Light mode' : 'Dark mode'}
             >
-              <LogOut size={15} />
+              {theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}
             </button>
 
             {/* Mobile burger */}

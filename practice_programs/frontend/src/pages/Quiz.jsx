@@ -4,7 +4,7 @@ import { api } from '../api';
 import {
   Gamepad2, CheckCircle2, XCircle, Zap, BarChart3,
   ChevronRight, Trophy, Target, AlertTriangle, Sparkles,
-  BookOpen, Code2, GitBranch, CirclePlay, StickyNote, FileText,
+  BookOpen, Code2, GitBranch, CirclePlay, StickyNote, FileText, X,
 } from 'lucide-react';
 
 
@@ -77,6 +77,7 @@ export default function Quiz() {
   const [feedback, setFeedback]     = useState(null);   // null | 'correct' | 'incorrect'
   const [score, setScore]           = useState(0);
   const [answers, setAnswers]       = useState([]);     // track all answers for results
+  const [showReview, setShowReview] = useState(false);  // quiz review mode
 
   // -- Performance tab ---------------------------------------
   const [showPerf, setShowPerf]     = useState(false);
@@ -294,6 +295,60 @@ export default function Quiz() {
               </div>
             )}
 
+            {/* Difficulty selector — visible for BOTH modes */}
+            <div style={{ marginBottom: '1.5rem' }}>
+              <label style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.75rem', color: 'var(--text-main)', fontWeight: 500, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                <span>Difficulty</span>
+                <span style={{ color: 'var(--primary)', textTransform: 'none' }}>{DIFFICULTY_CONFIG[difficulty]?.label}</span>
+              </label>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
+                {['easy', 'medium', 'hard'].map((d) => (
+                  <button
+                    key={d}
+                    type="button"
+                    onClick={() => setDifficulty(d)}
+                    style={{
+                      padding: '0.75rem', borderRadius: '10px',
+                      border: `1.5px solid ${difficulty === d ? DIFFICULTY_CONFIG[d].border : 'var(--border)'}`,
+                      background: difficulty === d ? DIFFICULTY_CONFIG[d].bg : 'var(--bg-surface-2)',
+                      color: difficulty === d ? DIFFICULTY_CONFIG[d].color : 'var(--text-muted)',
+                      fontWeight: difficulty === d ? 700 : 400, transition: 'all 0.2s',
+                      cursor: 'pointer', fontSize: '0.875rem',
+                    }}
+                  >
+                    {DIFFICULTY_CONFIG[d].label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Number of questions — visible for BOTH modes */}
+            <div style={{ marginBottom: '2rem' }}>
+              <label style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.75rem', color: 'var(--text-main)', fontWeight: 500, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                <span>Questions</span>
+                <span style={{ color: 'var(--primary)', textTransform: 'none' }}>{numQuestions} questions</span>
+              </label>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '8px' }}>
+                {[5, 10, 15, 20].map((n) => (
+                  <button
+                    key={n}
+                    type="button"
+                    onClick={() => setNumQuestions(n)}
+                    style={{
+                      padding: '0.75rem', borderRadius: '10px',
+                      border: `1.5px solid ${numQuestions === n ? 'var(--primary)' : 'var(--border)'}`,
+                      background: numQuestions === n ? 'var(--primary-light)' : 'var(--bg-surface-2)',
+                      color: numQuestions === n ? 'var(--primary)' : 'var(--text-muted)',
+                      fontWeight: numQuestions === n ? 700 : 400, transition: 'all 0.2s',
+                      cursor: 'pointer', fontSize: '0.875rem',
+                    }}
+                  >
+                    {n}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <button
               className="btn-primary"
               onClick={generateQuiz}
@@ -329,49 +384,86 @@ export default function Quiz() {
                 : pct >= 60 ? { label: 'Good job!', color: '#f59e0b' }
                 : { label: 'Keep practicing!', color: '#ef4444' };
     return (
-      <div className="glass-card animate-fade-in" style={{ padding: '3rem 2rem', textAlign: 'center', maxWidth: '600px', margin: '0 auto' }}>
-        <div style={{ fontSize: '3rem', marginBottom: '1rem', display: 'flex', justifyContent: 'center' }}>
-          {pct >= 80 ? <Trophy size={48} color="#22c55e" /> : pct >= 60 ? <Target size={48} color="#f59e0b" /> : <AlertTriangle size={48} color="#ef4444" />}
-        </div>
-        <h2 style={{ fontSize: '1.8rem', marginBottom: '0.5rem' }}>Quiz Complete!</h2>
-        <p style={{ color: grade.color, fontSize: '1.1rem', fontWeight: 600, marginBottom: '1.5rem' }}>{grade.label}</p>
-        <div style={{
-          fontSize: '4rem', fontWeight: 700, color: grade.color,
-          marginBottom: '0.5rem', lineHeight: 1
-        }}>
-          {score} <span style={{ fontSize: '2rem', color: 'var(--text-muted)', fontWeight: 400 }}>/ {quizData.total}</span>
-        </div>
-        <p style={{ color: 'var(--text-muted)', marginBottom: '2rem' }}>
-          {pct}% - Spaced repetition intervals updated automatically.
-        </p>
+      <div className="animate-fade-in" style={{ maxWidth: '680px', margin: '0 auto' }}>
+        <div className="glass-card" style={{ padding: '3rem 2rem', textAlign: 'center' }}>
+          <div style={{ fontSize: '3rem', marginBottom: '1rem', display: 'flex', justifyContent: 'center' }}>
+            {pct >= 80 ? <Trophy size={48} color="#22c55e" /> : pct >= 60 ? <Target size={48} color="#f59e0b" /> : <AlertTriangle size={48} color="#ef4444" />}
+          </div>
+          <h2 style={{ fontSize: '1.8rem', marginBottom: '0.5rem' }}>Quiz Complete!</h2>
+          <p style={{ color: grade.color, fontSize: '1.1rem', fontWeight: 600, marginBottom: '1.5rem' }}>{grade.label}</p>
+          <div style={{
+            fontSize: '4rem', fontWeight: 700, color: grade.color,
+            marginBottom: '0.5rem', lineHeight: 1
+          }}>
+            {score} <span style={{ fontSize: '2rem', color: 'var(--text-muted)', fontWeight: 400 }}>/ {quizData.total}</span>
+          </div>
+          <p style={{ color: 'var(--text-muted)', marginBottom: '2rem' }}>
+            {pct}% — Spaced repetition intervals updated automatically.
+          </p>
 
-        {/* Wrong answers summary */}
-        {answers.filter(a => !a.correct).length > 0 && (
-          <div style={{ textAlign: 'left', marginBottom: '2rem' }}>
-            <h3 style={{ fontSize: '1rem', marginBottom: '0.75rem', color: '#ef4444' }}>
-              Missed questions ({answers.filter(a => !a.correct).length})
-            </h3>
-            {answers.filter(a => !a.correct).map((a, i) => (
-              <div key={i} style={{
-                padding: '0.75rem', borderRadius: '10px', marginBottom: '0.5rem',
-                background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)'
-              }}>
-                <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '4px' }}>{a.q.question}</p>
-                <p style={{ fontSize: '0.82rem', color: '#22c55e', display: 'flex', alignItems: 'center', gap: '4px' }}><CheckCircle2 size={14} /> {a.q.answer}</p>
-                {a.q.explanation && <p style={{ fontSize: '0.78rem', color: '#94a3b8', marginTop: '2px' }}>{a.q.explanation}</p>}
-              </div>
-            ))}
+          <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
+            <button className="btn-primary" onClick={generateQuiz}>
+              Generate Another Quiz
+            </button>
+            <button
+              className="btn-secondary"
+              onClick={() => setShowReview(r => !r)}
+              style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+            >
+              <BookOpen size={16} />
+              {showReview ? 'Hide Review' : 'Review All Answers'}
+            </button>
+            <button className="btn-secondary" onClick={() => window.location.href = '/'}>
+              Back to Dashboard
+            </button>
+          </div>
+        </div>
+
+        {/* Review panel */}
+        {showReview && (
+          <div className="quiz-review">
+            <div className="quiz-review__header">
+              <span className="quiz-review__title">Answer Review ({answers.length} questions)</span>
+              <button className="btn-secondary btn-secondary--sm" onClick={() => setShowReview(false)}>
+                <X size={14} /> Close
+              </button>
+            </div>
+
+            {answers.map((a, i) => {
+              const isCorrect = a.correct;
+              return (
+                <div key={i} className="quiz-review-item">
+                  <p className="quiz-review-item__question">{i + 1}. {a.q.question}</p>
+                  <span className={`quiz-review-item__result quiz-review-item__result--${isCorrect ? 'correct' : 'wrong'}`}>
+                    {isCorrect ? <CheckCircle2 size={12} /> : <XCircle size={12} />}
+                    {isCorrect ? 'Correct' : 'Incorrect'}
+                  </span>
+                  <div className="quiz-review-options">
+                    {a.q.options.map((opt, oi) => {
+                      const isAnswer   = opt === a.q.answer;
+                      const isUserPick = opt === a.selected;
+                      let cls = 'quiz-review-opt';
+                      if (isAnswer) cls += ' quiz-review-opt--correct';
+                      else if (isUserPick && !isCorrect) cls += ' quiz-review-opt--wrong';
+                      return (
+                        <div key={oi} className={cls}>
+                          <span>{opt}</span>
+                          {isAnswer && <CheckCircle2 size={14} />}
+                          {isUserPick && !isCorrect && <XCircle size={14} />}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {a.q.explanation && (
+                    <div className="quiz-review-explanation">
+                      <strong>Explanation:</strong> {a.q.explanation}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
-
-        <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
-          <button className="btn-primary" onClick={generateQuiz}>
-            Generate Another Quiz
-          </button>
-          <button className="btn-secondary" onClick={() => window.location.href = '/'}>
-            Back to Dashboard
-          </button>
-        </div>
       </div>
     );
   }
@@ -409,7 +501,7 @@ export default function Quiz() {
       </div>
 
       {/* Progress bar */}
-      <div style={{ height: '4px', background: 'rgba(255,255,255,0.08)', borderRadius: '2px', marginBottom: '1.5rem', overflow: 'hidden' }}>
+      <div style={{ height: '4px', background: 'var(--bg-surface-2)', borderRadius: '2px', marginBottom: '1.5rem', overflow: 'hidden' }}>
         <div style={{
           height: '100%', borderRadius: '2px',
           background: 'linear-gradient(90deg, var(--primary-glow), var(--secondary-glow))',
@@ -447,13 +539,13 @@ export default function Quiz() {
             const showCorrect   = feedback && opt === q.answer;
             const showIncorrect = feedback === 'incorrect' && isSelected;
 
-            let bg = 'rgba(255,255,255,0.03)';
-            let border = '1px solid rgba(255,255,255,0.08)';
+            let bg = 'var(--bg-surface-2)';
+            let border = '1.5px solid var(--border)';
             let textColor = 'var(--text-main)';
 
-            if (isSelected && !feedback) { bg = 'rgba(99,102,241,0.15)'; border = '1px solid var(--primary-glow)'; }
-            if (showCorrect)  { bg = 'rgba(34,197,94,0.15)';  border = '1px solid #22c55e'; textColor = '#86efac'; }
-            if (showIncorrect){ bg = 'rgba(239,68,68,0.15)';  border = '1px solid #ef4444'; textColor = '#fca5a5'; }
+            if (isSelected && !feedback) { bg = 'var(--primary-light)'; border = '1.5px solid var(--primary)'; textColor = 'var(--primary)'; }
+            if (showCorrect)  { bg = 'var(--success-light)'; border = '1.5px solid var(--success)'; textColor = 'var(--success)'; }
+            if (showIncorrect){ bg = 'var(--danger-light)';  border = '1.5px solid var(--danger)';  textColor = 'var(--danger)'; }
 
             return (
               <button

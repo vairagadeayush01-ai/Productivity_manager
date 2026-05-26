@@ -158,11 +158,13 @@ function startWatchTimeTracker(meta) {
         videos[meta.videoId].watchTime  = Math.round(currentTime);
         videos[meta.videoId].completion = completion;
         videos[meta.videoId].lastWatched = new Date().toISOString();
-        chrome.storage.local.set({ ytai_videos: videos });
+        chrome.storage.local.set({ ytai_videos: videos }, function() {
+          if (currentTime >= 20) sendToBackend(meta);
+        });
+      } else {
+        if (currentTime >= 20) sendToBackend(meta);
       }
     });
-
-    if (completion >= 20) sendToBackend(meta);
   }, 5000);
 }
 
@@ -428,7 +430,7 @@ function showBadge(isEdu, confidence, meta) {
     if (tracking) {
       saveVideoMetadata(meta, true, confidence);
       startWatchTimeTracker(meta);
-      sendToBackend(meta);
+      // Sync will happen automatically after 20s of watch time
     } else {
       stopWatchTimeTracker();
     }
@@ -528,7 +530,7 @@ function run() {
       if (isEdu) {
         saveVideoMetadata(meta, isEdu, confidence);
         startWatchTimeTracker(meta);
-        if (confidence >= 0.6) sendToBackend(meta);
+        // Sync will happen automatically after 20s of watch time via the tracker
       }
     });
   }, 2500);

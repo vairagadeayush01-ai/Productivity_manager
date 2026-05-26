@@ -20,7 +20,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   User, GitBranch, Code2, Puzzle, RefreshCw, CheckCircle2,
   XCircle, AlertTriangle, Eye, EyeOff, Unlink, Link2,
-  Clock, Zap, ChevronRight, Calendar,
+  Clock, Zap, ChevronRight, Calendar, LogOut,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
@@ -144,7 +144,7 @@ function ProfileSkeleton() {
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function Profile() {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
 
   // ── State ──────────────────────────────────────────────────────────────────
   const [profile, setProfile] = useState(null);
@@ -629,6 +629,21 @@ export default function Profile() {
           </div>
         )}
       </SectionCard>
+
+      {/* ── SIGN OUT ── */}
+      <div className="logout-section">
+        <p className="logout-section__info">
+          Signed in as <span className="logout-section__email">{profile?.email || user?.email}</span>
+        </p>
+        <button
+          type="button"
+          className="btn-danger"
+          onClick={logout}
+        >
+          <LogOut size={15} />
+          Sign out of Productivity Manager
+        </button>
+      </div>
 
     </div>
   );

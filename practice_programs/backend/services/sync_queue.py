@@ -59,14 +59,14 @@ def _process_youtube(db: Session, user_id: int, payload: dict) -> Optional[int]:
       3. Save entry + vector embed via entry_store
     """
     completion_pct = payload.get("completion_pct", 0)
-    # Removing the 30% threshold so all videos sync during testing
-    # if completion_pct < 30:
-    #     logger.info(
-    #         "[SyncQueue] YouTube skipped — completion %s%% < 30%% threshold. video_id=%s",
-    #         completion_pct,
-    #         payload.get("video_id"),
-    #     )
-    #     return None
+    watch_duration = payload.get("watch_duration", 0)
+    if watch_duration < 20:
+        logger.info(
+            "[SyncQueue] YouTube skipped — watch_duration %s sec < 20 sec threshold. video_id=%s",
+            watch_duration,
+            payload.get("video_id"),
+        )
+        return None
 
     video_id = payload.get("video_id", "")
     title = payload.get("title", "Unknown video")
@@ -271,6 +271,22 @@ def process_batch(
             results.append(ActivityResult(dedupe_key, "failed", error="Missing dedupe_key or activity_type"))
             failed += 1
             continue
+
+        # Early validation: reject youtube_watch with insufficient watch time BEFORE
+        # consuming the dedupe key. This prevents a premature sync (watch_duration=0)
+        # from blocking all future legitimate syncs for the same video.
+        if activity_type == "youtube_watch":
+            watch_duration = payload.get("watch_duration", 0)
+            if watch_duration < 20:
+                logger.info(
+                    "[SyncQueue] Early-reject youtube_watch — watch_duration %ss < 20s threshold. video_id=%s",
+                    watch_duration,
+                    payload.get("video_id", "unknown"),
+                )
+                results.append(ActivityResult(dedupe_key, "skipped", error="watch_duration below threshold"))
+                skipped += 1
+                continue
+
 
         # 1. Try to insert queue row — UNIQUE constraint handles deduplication
         queue_row = ActivitySyncQueue(

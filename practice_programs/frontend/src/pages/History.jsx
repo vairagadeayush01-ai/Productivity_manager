@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import PageHeader from '../components/PageHeader';
@@ -43,6 +44,7 @@ export default function History() {
   const [total,     setTotal]     = useState(0);
   const [diaries,   setDiaries]   = useState([]);
   const [loading,   setLoading]   = useState(true);
+  const [error,     setError]     = useState(null);
   const [selectedEntry, setSelectedEntry] = useState(null);
 
   const handleDelete = async (e, id) => {
@@ -61,6 +63,7 @@ export default function History() {
   /* ── load entries ── */
   const loadEntries = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
       const params = {
         page, limit: PAGE_SIZE,
@@ -73,17 +76,20 @@ export default function History() {
       setTotal(res.total || 0);
     } catch (err) {
       console.error(err);
+      setError('Failed to load entries. Check your connection and try again.');
     } finally { setLoading(false); }
   }, [page, sourceTab, startDate, endDate]);
 
   /* ── load diaries ── */
   const loadDiaries = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
       const res = await api.getDiaries();
       setDiaries(res.diaries || []);
     } catch (err) {
       console.error(err);
+      setError('Failed to load diary entries. Check your connection and try again.');
     } finally { setLoading(false); }
   }, []);
 
@@ -108,6 +114,24 @@ export default function History() {
         title="History"
         subtitle="Browse every entry you've logged and your daily journal."
       />
+
+      {/* Error banner */}
+      {error && (
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '10px 16px', marginBottom: 'var(--space-md)',
+          background: 'var(--danger-light)', border: '1px solid rgba(239,68,68,0.2)',
+          borderRadius: 'var(--radius-sm)', color: 'var(--danger)', fontSize: '0.875rem',
+          gap: '8px',
+        }}>
+          <span>⚠ {error}</span>
+          <button
+            type="button"
+            className="btn-secondary btn-secondary--sm"
+            onClick={view === 'entries' ? loadEntries : loadDiaries}
+          >Retry</button>
+        </div>
+      )}
 
       {/* ── View toggle ── */}
       <div style={{
@@ -335,19 +359,16 @@ export default function History() {
           )}
         </>
       )}
-    {/* ── MODAL ── */}
-    {selectedEntry && (
-      <>
-        <div 
-          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 999 }}
-          onClick={() => setSelectedEntry(null)}
-        />
-        <div style={{
-          position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
-          background: 'var(--bg-surface)', border: '1px solid var(--border)',
-          borderRadius: '12px', padding: '24px', zIndex: 1000, width: '90%', maxWidth: '600px',
-          maxHeight: '90vh', overflowY: 'auto'
-        }}>
+    {/* ── MODAL — rendered via Portal into document.body to escape animation stacking context ── */}
+    {selectedEntry && createPortal(
+      <div
+        className="modal-overlay"
+        onClick={() => setSelectedEntry(null)}
+      >
+        <div
+          className="modal-dialog"
+          onClick={e => e.stopPropagation()}
+        >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <SourceBadge type={selectedEntry.source_type} />
@@ -364,9 +385,10 @@ export default function History() {
           <div style={{ 
             fontSize: '0.9375rem', lineHeight: 1.6, color: 'var(--text-main)', 
             whiteSpace: 'pre-wrap', marginBottom: '24px', padding: '16px',
-            background: 'var(--bg-surface-2)', borderRadius: '8px'
+            background: 'var(--bg-surface-2)', borderRadius: '8px',
+            maxHeight: '300px', overflowY: 'auto', overscrollBehavior: 'contain',
           }}>
-            {selectedEntry.summary || "No summary available."}
+            {selectedEntry.summary || 'No summary available.'}
           </div>
 
           <div className="topic-tags" style={{ marginBottom: '24px' }}>
@@ -396,7 +418,8 @@ export default function History() {
             </button>
           </div>
         </div>
-      </>
+      </div>,
+      document.body
     )}
     </div>
   );
