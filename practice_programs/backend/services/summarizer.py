@@ -1,125 +1,70 @@
 """
-summarizer.py — Groq-backed AI summarizer with retry logic and circuit breaker.
+summarizer.py — Groq-backed AI summarizer with LangChain retry and fallback logic.
 """
 
-import json
 import logging
 import os
-import threading
-import time
 
 from dotenv import load_dotenv
-from groq import Groq
-from tenacity import retry, stop_after_attempt, wait_exponential
+from pydantic import BaseModel, Field
+
+from langchain_groq import ChatGroq
+from langchain_core.prompts import PromptTemplate
+from langchain_core.runnables import RunnableLambda
 
 load_dotenv()
 
 logger = logging.getLogger(__name__)
-client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
-MODEL = "llama-3.3-70b-versatile"
-
-
-# ---------------------------------------------------------------------------
-# Circuit Breaker — pauses Groq calls if it fails too many times in a row
-# ---------------------------------------------------------------------------
-class _CircuitBreaker:
-    """
-    Simple thread-safe circuit breaker.
-    States: CLOSED (normal) → OPEN (paused) → HALF-OPEN (testing recovery)
-    Opens after `failure_threshold` consecutive failures.
-    Resets after `recovery_timeout` seconds.
-    """
-
-    CLOSED = "closed"
-    OPEN = "open"
-    HALF_OPEN = "half_open"
-
-    def __init__(self, failure_threshold: int = 5, recovery_timeout: float = 300.0):
-        self.failure_threshold = failure_threshold
-        self.recovery_timeout = recovery_timeout
-        self._failures = 0
-        self._state = self.CLOSED
-        self._opened_at: float | None = None
-        self._lock = threading.Lock()
-
-    @property
-    def state(self) -> str:
-        with self._lock:
-            if self._state == self.OPEN:
-                if self._opened_at and (time.monotonic() - self._opened_at) >= self.recovery_timeout:
-                    self._state = self.HALF_OPEN
-                    logger.info("Groq circuit breaker → HALF-OPEN (testing recovery)")
-            return self._state
-
-    def record_success(self) -> None:
-        with self._lock:
-            self._failures = 0
-            if self._state != self.CLOSED:
-                logger.info("Groq circuit breaker → CLOSED (recovered)")
-            self._state = self.CLOSED
-            self._opened_at = None
-
-    def record_failure(self) -> None:
-        with self._lock:
-            self._failures += 1
-            if self._failures >= self.failure_threshold:
-                self._state = self.OPEN
-                self._opened_at = time.monotonic()
-                logger.error(
-                    "Groq circuit breaker → OPEN after %d consecutive failures. "
-                    "Pausing calls for %.0f seconds.",
-                    self._failures,
-                    self.recovery_timeout,
-                )
-
-    def is_open(self) -> bool:
-        return self.state == self.OPEN
+_GROQ_MODEL = "llama-3.3-70b-versatile"
 
 
-_breaker = _CircuitBreaker(failure_threshold=5, recovery_timeout=300.0)
-
-
-# ---------------------------------------------------------------------------
-# Core Groq call with retry + circuit breaker
-# ---------------------------------------------------------------------------
-@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
-def _call_groq(prompt: str) -> str:
-    """Sends a prompt to Groq with retry logic and circuit-breaker protection."""
-    if _breaker.is_open():
-        raise RuntimeError(
-            "Groq API is temporarily unavailable (circuit breaker open). "
-            "Please try again in a few minutes."
-        )
+def _get_llm():
+    api_key = os.getenv("GROQ_API_KEY", "")
+    if not api_key:
+        return None
     try:
-        response = client.chat.completions.create(
-            model=MODEL,
-            messages=[{"role": "user", "content": prompt}],
+        return ChatGroq(
+            model=_GROQ_MODEL,
             temperature=0.3,
             max_tokens=1024,
+            api_key=api_key,
         )
-        _breaker.record_success()
-        return response.choices[0].message.content.strip()
     except Exception as exc:
-        _breaker.record_failure()
-        logger.warning("Groq call failed (failure #%d): %s", _breaker._failures, exc)
-        raise
+        logger.warning("LangChain ChatGroq init failed: %s", exc)
+        return None
 
 
-def _parse_json(text: str) -> dict:
-    """Strips markdown fences and parses JSON. Returns a fallback dict on failure."""
-    if text.startswith("```"):
-        text = text.split("\n", 1)[1]
-        text = text.rsplit("```", 1)[0]
-    try:
-        return json.loads(text.strip())
-    except json.JSONDecodeError:
-        return {"summary": text[:500], "topics": [], "key_concepts": []}
+# ─── Pydantic Schemas for Structured Output ───────────────────────────────────
+
+class KeyConcept(BaseModel):
+    concept: str = Field(description="Name of the concept")
+    explanation: str = Field(description="One sentence explanation")
+
+class SummaryOutput(BaseModel):
+    summary: str = Field(description="A clear 3-5 sentence summary.")
+    topics: list[str] = Field(description="List of 2-3 word topics.")
+    key_concepts: list[KeyConcept] = Field(default_factory=list, description="3-6 key concepts")
 
 
-# ---------------------------------------------------------------------------
-# Public summarizer functions
-# ---------------------------------------------------------------------------
+# ─── Fallbacks ────────────────────────────────────────────────────────────────
+
+def _fallback_summary(inputs: dict) -> SummaryOutput:
+    logger.error("Summarization LLM failed after retries. Using fallback.")
+    return SummaryOutput(
+        summary="Content saved, but AI summarization failed (API unavailable).",
+        topics=["Uncategorized"],
+        key_concepts=[]
+    )
+
+
+def _fallback_diary(inputs: dict) -> str:
+    logger.error("Diary generation LLM failed after retries. Using fallback.")
+    return "Your learning activities have been saved, but the daily AI summary could not be generated at this time."
+
+
+# ─── Public summarizer functions ──────────────────────────────────────────────
+
 def summarize_transcript(text: str, title: str = "") -> dict:
     """
     Summarizes any long text (YouTube transcript, PDF, webpage, or activity logs).
@@ -129,6 +74,16 @@ def summarize_transcript(text: str, title: str = "") -> dict:
     if len(text) > max_chars:
         text = text[:max_chars] + "\n[content truncated]"
 
+    llm = _get_llm()
+    if not llm:
+        return _fallback_summary({}).model_dump()
+
+    structured_llm = llm.with_structured_output(SummaryOutput)
+    
+    # Configure retry and fallback
+    # stop_after_attempt=3 is the default in ChatGroq actually, but we explicitly wrap it
+    chain = structured_llm.with_retry(stop_after_attempt=3).with_fallbacks([RunnableLambda(_fallback_summary)])
+
     prompt = f"""You are a learning assistant. A student just studied this content and you need to create a concise summary for their personal revision diary.
 
 Title: {title if title else "Unknown"}
@@ -136,19 +91,15 @@ Title: {title if title else "Unknown"}
 Content:
 {text}
 
-Return ONLY valid JSON with this exact structure (no markdown, no backticks, no extra text):
-{{
-  "summary": "A clear 3-5 sentence summary. CRITICAL: If the content is a list of LeetCode problems, GitHub commits, or specific activities, you MUST explicitly state the exact names of the problems solved or repositories touched. Do not generalize.",
-  "topics": ["topic1", "topic2", "topic3"],
-  "key_concepts": [
-    {{"concept": "name", "explanation": "one sentence"}},
-    {{"concept": "name", "explanation": "one sentence"}}
-  ]
-}}
-
+CRITICAL: If the content is a list of LeetCode problems, GitHub commits, or specific activities, you MUST explicitly state the exact names of the problems solved or repositories touched. Do not generalize.
 Keep topics short (2-3 words each). Include 3-6 key concepts max."""
 
-    return _parse_json(_call_groq(prompt))
+    try:
+        response = chain.invoke(prompt)
+        return response.model_dump()
+    except Exception as exc:
+        logger.error("Summarize transcript failed completely: %s", exc)
+        return _fallback_summary({}).model_dump()
 
 
 def summarize_manual_log(note: str) -> dict:
@@ -156,18 +107,26 @@ def summarize_manual_log(note: str) -> dict:
     Summarizes a short manual log entry like 'read about JWT today'.
     Returns: { summary, topics[], key_concepts[] }
     """
+    llm = _get_llm()
+    if not llm:
+        return _fallback_summary({}).model_dump()
+
+    structured_llm = llm.with_structured_output(SummaryOutput)
+    chain = structured_llm.with_retry(stop_after_attempt=3).with_fallbacks([RunnableLambda(_fallback_summary)])
+
     prompt = f"""A student wrote this quick note about what they learned today:
 
 "{note}"
 
-Return ONLY valid JSON (no markdown, no backticks, no extra text):
-{{
-  "summary": "Restate what they learned in 1-2 clear sentences.",
-  "topics": ["topic1", "topic2"],
-  "key_concepts": []
-}}"""
+Restate what they learned in 1-2 clear sentences as the summary.
+"""
 
-    return _parse_json(_call_groq(prompt))
+    try:
+        response = chain.invoke(prompt)
+        return response.model_dump()
+    except Exception as exc:
+        logger.error("Summarize manual log failed completely: %s", exc)
+        return _fallback_summary({}).model_dump()
 
 
 def summarize_daily_diary(entries_text: str, date_str: str) -> str:
@@ -175,6 +134,14 @@ def summarize_daily_diary(entries_text: str, date_str: str) -> str:
     Takes a combined string of all learning activities for the day and generates a cohesive,
     journal-style diary entry summarizing the student's progress.
     """
+    llm = _get_llm()
+    if not llm:
+        return _fallback_diary({})
+
+    from langchain_core.output_parsers import StrOutputParser
+    chain = llm | StrOutputParser()
+    chain = chain.with_retry(stop_after_attempt=3).with_fallbacks([RunnableLambda(_fallback_diary)])
+
     prompt = f"""You are a personal AI learning assistant helping a student maintain a learning diary.
 Today is {date_str}.
 
@@ -191,4 +158,9 @@ CRITICAL INSTRUCTIONS:
 
 Use paragraphs to make it readable. Do not output JSON. Do not use markdown headers. Just write the diary entry text."""
 
-    return _call_groq(prompt)
+    try:
+        response = chain.invoke(prompt)
+        return response
+    except Exception as exc:
+        logger.error("Summarize daily diary failed completely: %s", exc)
+        return _fallback_diary({})

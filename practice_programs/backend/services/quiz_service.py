@@ -1,57 +1,58 @@
 import os
-import json
-from groq import Groq
-from dotenv import load_dotenv
+import logging
+from pydantic import BaseModel, Field
 
-load_dotenv()
+from langchain_groq import ChatGroq
+from langchain_core.prompts import PromptTemplate
 
-client = Groq(api_key=os.getenv("GROQ_API_KEY"))
-MODEL  = "llama-3.3-70b-versatile"
+logger = logging.getLogger(__name__)
 
-
-def _call_groq(prompt: str, max_tokens: int = 4096, temperature: float = 0.8) -> str:
-    response = client.chat.completions.create(
-        model=MODEL,
-        messages=[{"role": "user", "content": prompt}],
-        temperature=temperature,
-        max_tokens=max_tokens,
-    )
-    return response.choices[0].message.content.strip()
+_GROQ_MODEL = "llama-3.3-70b-versatile"
 
 
-def _parse_json_list(text: str) -> list:
-    # Strip markdown code fences if present
-    if "```" in text:
-        parts = text.split("```")
-        for part in parts:
-            part = part.strip()
-            if part.startswith("json"):
-                part = part[4:].strip()
-            if part.startswith("["):
-                text = part
-                break
-    # Find the JSON array
-    start = text.find("[")
-    end   = text.rfind("]")
-    if start != -1 and end != -1:
-        text = text[start:end + 1]
+def _get_llm():
+    api_key = os.getenv("GROQ_API_KEY", "")
+    if not api_key:
+        return None
     try:
-        result = json.loads(text.strip())
-        return result if isinstance(result, list) else []
-    except Exception:
-        return []
+        return ChatGroq(
+            model=_GROQ_MODEL,
+            temperature=0.8,
+            max_tokens=6000,
+            api_key=api_key
+        )
+    except Exception as exc:
+        logger.warning("LangChain ChatGroq init failed: %s", exc)
+        return None
 
+
+# ─── Pydantic Schemas ─────────────────────────────────────────────────────────
+
+class QuizQuestion(BaseModel):
+    question: str = Field(description="Clear multiple choice question text")
+    options: list[str] = Field(description="Exactly 4 options (A, B, C, D format as plain text)")
+    answer: str = Field(description="Exact text of the correct option")
+    explanation: str = Field(description="Concise 1-2 sentence explanation of why the answer is correct")
+    topic: str = Field(description="Specific topic name")
+    difficulty: str = Field(description="Difficulty level (easy, medium, hard)")
+    source_title: str | None = Field(None, description="Title of the source entry this question is based on, if applicable")
+
+class QuizQuestionList(BaseModel):
+    questions: list[QuizQuestion] = Field(description="List of multiple choice questions")
+
+
+# ─── Core Logic ───────────────────────────────────────────────────────────────
 
 def generate_quiz(entries: list[dict], n_questions: int = 20, difficulty: str = "medium") -> list[dict]:
-    """Generates MCQs from today's learning entries.
-    
-    Args:
-        entries: List of learning entry dicts
-        n_questions: Minimum number of questions (default 20)
-        difficulty: 'easy' | 'medium' | 'hard'
-    """
+    """Generates MCQs from today's learning entries."""
     if not entries:
         return []
+
+    llm = _get_llm()
+    if not llm:
+        return []
+
+    structured_llm = llm.with_structured_output(QuizQuestionList)
 
     # Build rich context from all entries
     context = ""
@@ -86,7 +87,7 @@ DIFFICULTY: {difficulty.upper()}
 
 STRICT RULES:
 - Base questions ONLY on the content above
-- Each question must have exactly 4 options (A, B, C, D format as plain text)
+- Each question must have exactly 4 options
 - Only one correct answer per question
 - Cover ALL topics — distribute questions proportionally across topics
 - Wrong options should be plausible/tricky, not obviously wrong
@@ -94,21 +95,14 @@ STRICT RULES:
 - HIGH VARIETY: You must generate novel, highly unique questions every time. Focus on different sub-topics, obscure details, and avoid typical predictable questions.
 - No two questions should test the same fact
 - Vary question styles: concept explanation, code behavior, tradeoff comparison, error identification
+"""
 
-Return ONLY a valid JSON array, no extra text, no markdown:
-[
-  {{
-    "question": "clear question text",
-    "options": ["option A text", "option B text", "option C text", "option D text"],
-    "answer": "exact text of the correct option",
-    "explanation": "concise 1-2 sentence explanation of why the answer is correct",
-    "topic": "specific topic name",
-    "difficulty": "{difficulty}"
-  }}
-]"""
-
-    raw = _call_groq(prompt, max_tokens=6000)
-    questions = _parse_json_list(raw)
+    try:
+        response = structured_llm.invoke(prompt)
+        questions = [q.model_dump() for q in response.questions]
+    except Exception as exc:
+        logger.error("Quiz generation failed: %s", exc)
+        return []
 
     # Ensure minimum question count — retry once with remaining topics if needed
     if len(questions) < n_questions and len(questions) > 0:
@@ -118,13 +112,16 @@ Return ONLY a valid JSON array, no extra text, no markdown:
 
 Same difficulty ({difficulty.upper()}): {diff_instr}
 
-These must be DIFFERENT from these already-generated questions:
-{json.dumps([q.get('question','') for q in questions], indent=2)}
-
-Return ONLY a valid JSON array:
-[{{"question":"...","options":["A","B","C","D"],"answer":"...","explanation":"...","topic":"...","difficulty":"{difficulty}"}}]"""
-        extra = _parse_json_list(_call_groq(retry_prompt, max_tokens=4000))
-        questions.extend(extra[:remaining])
+STRICT RULES:
+- These must be DIFFERENT from these already-generated questions:
+{[q.get('question','') for q in questions]}
+"""
+        try:
+            extra_response = structured_llm.invoke(retry_prompt)
+            extra = [q.model_dump() for q in extra_response.questions]
+            questions.extend(extra[:remaining])
+        except Exception as exc:
+            logger.error("Quiz generation retry failed: %s", exc)
 
     # Deduplicate questions by question text
     seen = set()
@@ -140,6 +137,12 @@ Return ONLY a valid JSON array:
 
 def generate_topic_quiz(topic: str, context: str, n_questions: int = 10, difficulty: str = "medium") -> list[dict]:
     """Generates a focused quiz on a specific topic for spaced repetition."""
+    llm = _get_llm()
+    if not llm:
+        return []
+
+    structured_llm = llm.with_structured_output(QuizQuestionList)
+
     diff_instructions = {
         "easy": "Focus on recall and recognition.",
         "medium": "Focus on application and understanding.",
@@ -152,20 +155,14 @@ Difficulty: {difficulty.upper()} — {diff_instr}
 
 Context from student's notes:
 {context[:4000]}
+"""
 
-Return ONLY a valid JSON array:
-[
-  {{
-    "question": "question text",
-    "options": ["A", "B", "C", "D"],
-    "answer": "correct option text",
-    "explanation": "brief explanation",
-    "topic": "{topic}",
-    "difficulty": "{difficulty}"
-  }}
-]"""
-
-    return _parse_json_list(_call_groq(prompt, max_tokens=3000))
+    try:
+        response = structured_llm.invoke(prompt)
+        return [q.model_dump() for q in response.questions]
+    except Exception as exc:
+        logger.error("Topic quiz generation failed: %s", exc)
+        return []
 
 
 # ─── Phase 3.2: Contextual quiz (all source types) ────────────────────────────
@@ -179,16 +176,6 @@ def generate_contextual_quiz(
     """
     Generates quiz questions grounded in the user's ACTUAL learning history
     across ALL source types: YouTube lectures, LeetCode solutions, GitHub commits.
-
-    Steps:
-      1. Semantic search: retrieve top-10 entries related to topic
-      2. Build rich context from those entries (title + summary + source type)
-      3. Generate questions that specifically reference the user's own work
-      4. Return (questions, sources) — sources let frontend show "From: [title]"
-
-    Returns:
-      (questions: list[dict], sources: list[dict])
-      sources: [{ id, title, source_type, date, snippet }]
     """
     from services import vector_store  # lazy import to avoid circular
 
@@ -256,21 +243,20 @@ STRICT RULES:
 - Vary question styles: conceptual, implementation, complexity analysis, comparison
 - Include a "source_title" field referencing which entry the question came from
 - No two questions should test the same fact
+"""
 
-Return ONLY a valid JSON array:
-[
-  {{
-    "question": "question text",
-    "options": ["option A", "option B", "option C", "option D"],
-    "answer": "exact text of correct option",
-    "explanation": "concise 1-2 sentence explanation",
-    "topic": "{topic}",
-    "difficulty": "{difficulty}",
-    "source_title": "title of the source entry this question is based on"
-  }}
-]"""
+    llm = _get_llm()
+    if not llm:
+        return [], sources
 
-    raw_questions = _parse_json_list(_call_groq(prompt, max_tokens=5000))
+    structured_llm = llm.with_structured_output(QuizQuestionList)
+
+    try:
+        response = structured_llm.invoke(prompt)
+        raw_questions = [q.model_dump() for q in response.questions]
+    except Exception as exc:
+        logger.error("Contextual quiz generation failed: %s", exc)
+        raw_questions = []
 
     # Deduplicate
     seen: set[str] = set()
@@ -281,4 +267,4 @@ Return ONLY a valid JSON array:
             seen.add(key)
             unique.append(q)
 
-    return unique[:n_questions], sources
+    return unique[:n_questions], sources

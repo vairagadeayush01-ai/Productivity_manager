@@ -22,6 +22,10 @@ import logging
 import os
 from collections.abc import Iterator
 
+from langchain_groq import ChatGroq
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import StrOutputParser
+
 from services import vector_store
 
 logger = logging.getLogger(__name__)
@@ -32,15 +36,19 @@ _MAX_CHARS_PER_SOURCE = 450
 _MAX_CONTEXT_CHARS = 2800
 
 
-def _get_groq():
+def _get_llm():
     api_key = os.getenv("GROQ_API_KEY", "")
     if not api_key:
         return None
     try:
-        from groq import Groq
-        return Groq(api_key=api_key)
+        return ChatGroq(
+            model=_GROQ_MODEL,
+            temperature=0.3,
+            max_tokens=600,
+            api_key=api_key
+        )
     except Exception as exc:
-        logger.warning("Groq client init failed: %s", exc)
+        logger.warning("LangChain ChatGroq init failed: %s", exc)
         return None
 
 
@@ -112,20 +120,25 @@ def retrieve_context(query: str, user_id: int, n: int = _MAX_SOURCES) -> tuple[l
     return sources, "\n\n---\n\n".join(context_parts)
 
 
-# ─── Single-turn RAG answer (streaming) ───────────────────────────────────────
+def context_titles_block(sources: list[dict]) -> str:
+    """Format source list for system prompt."""
+    lines = []
+    for s in sources:
+        lines.append(
+            f"• [{s['source_type'].upper()}] {s['title']}"
+            + (f" ({s['date']})" if s.get("date") else "")
+        )
+    return "\n".join(lines)
+
+
+# ─── LangChain LCEL RAG Chain ─────────────────────────────────────────────────
 
 def stream_rag_answer(query: str, user_id: int) -> Iterator[str]:
     """
-    Retrieves context and streams a Groq answer as SSE-compatible text chunks.
-
+    Retrieves context and streams an answer using LangChain LCEL as SSE-compatible text chunks.
     Yields strings ending in '\n\n' following SSE convention.
-    Each chunk is prefixed with 'data: ' by the route layer.
-
-    Citation markers [SOURCE: Title] appear inline in the streamed text.
-    After the answer, yields a final JSON sources block:
-      data: [SOURCES_JSON] {...}
     """
-    groq = _get_groq()
+    llm = _get_llm()
     sources, context_text = retrieve_context(query, user_id)
 
     # ── No context case ─────────────────────────────────────────────────────
@@ -139,14 +152,14 @@ def stream_rag_answer(query: str, user_id: int) -> Iterator[str]:
         yield "data: [DONE]\n\n"
         return
 
-    if not groq:
+    if not llm:
         yield "data: AI unavailable — GROQ_API_KEY not set.\n\n"
         yield "data: [DONE]\n\n"
         return
 
-    # ── System prompt ────────────────────────────────────────────────────────
-    source_titles = "\n".join(f"- {s['title']}" for s in sources)
-    system = f"""You are the user's personal AI learning assistant. You have access to their actual learning notes, code solutions, and study history.
+    # ── Define LCEL Prompt Template ──────────────────────────────────────────
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", """You are the user's personal AI learning assistant. You have access to their actual learning notes, code solutions, and study history.
 
 RULES:
 1. Answer ONLY based on the provided sources below.
@@ -156,40 +169,28 @@ RULES:
 5. Never fabricate facts, code, or citations.
 
 AVAILABLE SOURCES:
-{context_titles_block(sources)}"""
+{sources_titles}"""),
+        ("user", "{query}")
+    ])
 
-    # ── Groq streaming call ──────────────────────────────────────────────────
+    # ── Build and Execute the Chain ──────────────────────────────────────────
+    chain = prompt | llm | StrOutputParser()
+
     try:
-        stream = groq.chat.completions.create(
-            model=_GROQ_MODEL,
-            messages=[
-                {"role": "system", "content": system},
-                {"role": "user",   "content": query},
-            ],
-            temperature=0.3,
-            max_tokens=600,
-            stream=True,
-        )
+        source_titles = context_titles_block(sources)
+        stream = chain.stream({
+            "sources_titles": source_titles,
+            "query": query
+        })
+        
         for chunk in stream:
-            delta = chunk.choices[0].delta.content or ""
-            if delta:
-                yield f"data: {delta}\n\n"
+            if chunk:
+                yield f"data: {chunk}\n\n"
 
     except Exception as exc:
-        logger.error("RAG Groq stream failed: %s", exc)
+        logger.error("LangChain RAG stream failed: %s", exc)
         yield f"data: [Error: {exc}]\n\n"
 
     # ── Emit sources JSON block ──────────────────────────────────────────────
     yield f"data: [SOURCES_JSON] {json.dumps(sources)}\n\n"
     yield "data: [DONE]\n\n"
-
-
-def context_titles_block(sources: list[dict]) -> str:
-    """Format source list for system prompt."""
-    lines = []
-    for s in sources:
-        lines.append(
-            f"• [{s['source_type'].upper()}] {s['title']}"
-            + (f" ({s['date']})" if s.get("date") else "")
-        )
-    return "\n".join(lines)

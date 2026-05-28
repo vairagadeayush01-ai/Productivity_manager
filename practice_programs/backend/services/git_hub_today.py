@@ -7,16 +7,14 @@ Upgraded in Phase 2.2:
   - analyze_commit()        new: Groq AI semantic summary of a parsed diff
   - get_user_pat()          new: resolve PAT from DB or env (DB takes priority)
 
-The AI analysis prompt asks for structured JSON:
-  {semantic_summary, change_type, impact, patterns}
-
-On failure (Groq unavailable, rate limit, etc.) the diff data is still stored
-with the commit message as the summary — no data is lost.
+Upgraded Architecture:
+  - fetch_today_activity() queries active repos, then directly queries `/commits`.
+    This avoids the empty SHA issue from the `/events` feed.
 """
 import json
 import logging
 import os
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import httpx
 from dotenv import load_dotenv
@@ -55,14 +53,12 @@ def _get_groq():
         return None
 
 
-# ─── New: fetch a single commit's full diff ───────────────────────────────────
+# ─── Fetch a single commit's full diff ────────────────────────────────────────
 
 async def fetch_commit_diff(owner: str, repo: str, sha: str, pat: str = "") -> ParsedDiff | None:
     """
     Fetches the full diff for a single commit SHA.
     Returns a ParsedDiff or None on failure.
-
-    owner/repo extracted from repo_name field ("owner/repo" format).
     """
     url = f"{_GITHUB_API}/repos/{owner}/{repo}/commits/{sha}"
     try:
@@ -80,19 +76,12 @@ async def fetch_commit_diff(owner: str, repo: str, sha: str, pat: str = "") -> P
         return None
 
 
-# ─── New: AI commit analysis ──────────────────────────────────────────────────
+# ─── AI commit analysis ───────────────────────────────────────────────────────
 
 def analyze_commit(commit_msg: str, diff: ParsedDiff, username: str) -> dict:
     """
     Calls Groq to generate a semantic summary of a commit.
-
-    Returns dict with:
-      semantic_summary: str
-      change_type:      str (feature|bugfix|refactor|test|config)
-      impact:           str (frontend|backend|database|algorithm|infrastructure|unknown)
-      patterns:         list[str]
-
-    Returns a safe fallback dict if Groq is unavailable or fails.
+    Returns dict with semantic_summary, change_type, impact, patterns.
     """
     groq = _get_groq()
     if not groq:
@@ -103,7 +92,6 @@ def analyze_commit(commit_msg: str, diff: ParsedDiff, username: str) -> dict:
             "patterns": diff.languages[:3],
         }
 
-    # Build a concise file list for the prompt
     file_summary = ", ".join(
         f"{pf.filename} (+{pf.additions} -{pf.deletions})"
         for pf in diff.files[:10]
@@ -137,11 +125,9 @@ Return ONLY valid JSON (no markdown, no explanation):
             max_tokens=350,
         )
         text = resp.choices[0].message.content.strip()
-        # Strip markdown fences if present
         if text.startswith("```"):
             text = text.split("\n", 1)[1].rsplit("```", 1)[0]
         result = json.loads(text.strip())
-        # Validate keys
         return {
             "semantic_summary": str(result.get("semantic_summary", commit_msg)),
             "change_type":      str(result.get("change_type", diff.primary_change_type)),
@@ -158,134 +144,120 @@ Return ONLY valid JSON (no markdown, no explanation):
         }
 
 
-# ─── Original fetch_today_activity (upgraded) ─────────────────────────────────
+# ─── Robust Commits Fetch (New Architecture) ──────────────────────────────────
 
 async def fetch_today_activity(pat: str = "", username: str = "") -> dict:
     """
-    Fetches today's GitHub activity. Now also retrieves full commit diffs.
-
-    Each commit in the result dict now includes:
-      - repo, message, sha (existing)
-      - parsed_diff: dict from parsed_diff_to_dict(ParsedDiff) (new)
-      - ai_analysis: dict from analyze_commit() (new)
-
-    pat / username: pass per-user values from DB profile.
-    Falls back to GITHUB_USERNAME / GITHUB_TOKEN env vars if not provided.
+    Fetches the user's latest commits by explicitly querying active repositories
+    instead of relying on the unreliably-formatted /events API.
     """
     gh_user = username or GITHUB_USERNAME
     if not gh_user:
         raise ValueError("GitHub username not set. Connect GitHub in your profile or set GITHUB_USERNAME in .env")
 
-    url = f"{_GITHUB_API}/users/{gh_user}/events"
+    # Fetch commits from up to 3 days ago
+    since_date = (datetime.now(UTC) - timedelta(days=3)).replace(hour=0, minute=0, second=0, microsecond=0)
+    since_iso = since_date.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    commits = []
+    repos_seen = set()
 
     try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            response = await client.get(url, headers=_github_headers(pat))
+        async with httpx.AsyncClient(timeout=15) as client:
+            headers = _github_headers(pat)
+            
+            # 1. Fetch repositories updated recently
+            url_repos = f"{_GITHUB_API}/users/{gh_user}/repos?sort=updated&per_page=15"
+            resp = await client.get(url_repos, headers=headers)
+            
+            if resp.status_code == 401 or resp.status_code == 403:
+                raise ValueError("GitHub API rate limit or auth failed. Add a PAT in your profile.")
+            if resp.status_code == 404:
+                raise ValueError(f"GitHub user '{gh_user}' not found.")
+            if resp.status_code != 200:
+                raise ValueError(f"GitHub API returned {resp.status_code}.")
+            
+            repos = resp.json()
+            if not isinstance(repos, list):
+                raise ValueError(f"Unexpected GitHub repos response: {repos}")
+            
+            # 2. Iterate through each repo to find recent commits
+            for repo_obj in repos:
+                repo_full = repo_obj.get("full_name")
+                owner = repo_obj.get("owner", {}).get("login")
+                repo_name = repo_obj.get("name")
+                
+                if not repo_full or not owner or not repo_name:
+                    continue
+                
+                url_commits = f"{_GITHUB_API}/repos/{owner}/{repo_name}/commits?author={gh_user}&since={since_iso}"
+                commits_resp = await client.get(url_commits, headers=headers)
+                
+                if commits_resp.status_code != 200:
+                    logger.warning(f"Failed to fetch commits for {repo_full}: HTTP {commits_resp.status_code}")
+                    continue
+                    
+                repo_commits = commits_resp.json()
+                if not isinstance(repo_commits, list):
+                    continue
+                    
+                # 3. Download the diff and analyze each commit
+                for c_obj in repo_commits:
+                    sha = c_obj.get("sha", "")
+                    msg = c_obj.get("commit", {}).get("message", "").strip()
+                    
+                    if not sha or not msg:
+                        continue
+                        
+                    repos_seen.add(repo_full)
+                    
+                    commit_data = {
+                        "repo": repo_full,
+                        "repo_name": repo_name,
+                        "owner": owner,
+                        "message": msg,
+                        "sha": sha,
+                        "parsed_diff": None,
+                        "ai_analysis": None,
+                        "patch_text": ""
+                    }
+                    
+                    # Fetch full diff
+                    diff = await fetch_commit_diff(owner, repo_name, sha, pat)
+                    if diff:
+                        ai = analyze_commit(msg, diff, gh_user)
+                        commit_data["parsed_diff"] = parsed_diff_to_dict(diff)
+                        commit_data["ai_analysis"] = ai
+                        commit_data["patch_text"] = diff.patch_text
+                        
+                    commits.append(commit_data)
+                    
     except httpx.TimeoutException:
         raise ValueError("GitHub API timed out. Check your connection.")
     except Exception as exc:
+        if isinstance(exc, ValueError):
+            raise
         raise ValueError(f"GitHub API error: {exc}")
 
-    if response.status_code == 403:
-        raise ValueError("GitHub API rate limit hit. Add a PAT in your profile.")
-    if response.status_code == 404:
-        raise ValueError(f"GitHub user '{gh_user}' not found.")
-    if response.status_code != 200:
-        raise ValueError(f"GitHub API returned {response.status_code}.")
-
-    try:
-        events = response.json()
-    except Exception:
-        raise ValueError("GitHub API returned unexpected data.")
-
-    if not isinstance(events, list):
-        raise ValueError(f"Unexpected GitHub response: {events}")
-
     today = datetime.now(UTC).date()
-    commits = []
-    new_repos = []
-    repos_seen = set()
-
-    for event in events:
-        try:
-            event_date = (
-                datetime.strptime(event["created_at"], "%Y-%m-%dT%H:%M:%SZ")
-                .replace(tzinfo=UTC)
-                .date()
-            )
-        except (KeyError, ValueError):
-            continue
-
-        if event_date != today:
-            continue
-
-        repo_full = event.get("repo", {}).get("name", "unknown")  # "owner/repo"
-        repos_seen.add(repo_full)
-        event_type = event.get("type", "")
-
-        if event_type == "PushEvent":
-            payload_commits = event.get("payload", {}).get("commits", [])
-            repo_parts = repo_full.split("/") if "/" in repo_full else ["", repo_full]
-            owner, repo_name = (repo_parts[0], repo_parts[1]) if len(repo_parts) == 2 else ("", repo_full)
-
-            if payload_commits:
-                for commit in payload_commits:
-                    sha = commit.get("sha", "")
-                    msg = commit.get("message", "").strip()
-                    if msg:
-                        commit_data = {
-                            "repo": repo_full,
-                            "repo_name": repo_name,
-                            "owner": owner,
-                            "message": msg,
-                            "sha": sha,
-                            "parsed_diff": None,
-                            "ai_analysis": None,
-                        }
-
-                        # Fetch full diff if SHA is available
-                        if sha and owner and repo_name:
-                            diff = await fetch_commit_diff(owner, repo_name, sha, pat)
-                            if diff:
-                                ai = analyze_commit(msg, diff, gh_user)
-                                commit_data["parsed_diff"] = parsed_diff_to_dict(diff)
-                                commit_data["ai_analysis"] = ai
-                                commit_data["patch_text"] = diff.patch_text
-
-                        commits.append(commit_data)
-            else:
-                commits.append({
-                    "repo": repo_full,
-                    "repo_name": repo_name,
-                    "owner": owner,
-                    "message": "Pushed updates",
-                    "sha": "",
-                    "parsed_diff": None,
-                    "ai_analysis": None,
-                })
-
-        elif event_type == "CreateEvent":
-            ref_type = event.get("payload", {}).get("ref_type", "")
-            if ref_type == "repository":
-                new_repos.append(repo_full)
-
+    
     # Build summary text (backward compat)
     lines = [f"GitHub activity for {gh_user} on {today}:"]
     if commits:
         lines.append(f"\nCommits ({len(commits)}):")
         for c in commits:
-            lines.append(f"  - [{c['repo']}] {c['message']}")
-    if new_repos:
-        lines.append(f"\nNew repositories: {', '.join(new_repos)}")
-    if not commits and not new_repos:
-        lines.append("No push or create activity today.")
+            # truncate message for summary
+            msg_trunc = c['message'].split('\n')[0][:100]
+            lines.append(f"  - [{c['repo']}] {msg_trunc}")
+    if not commits:
+        lines.append("No commits found in the last 3 days.")
 
     return {
         "username":      gh_user,
         "date":          today.isoformat(),
         "commits":       commits,
         "repos_touched": sorted(repos_seen),
-        "new_repos":     new_repos,
+        "new_repos":     [], 
         "total_commits": len(commits),
         "summary_text":  "\n".join(lines),
     }
