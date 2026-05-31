@@ -20,6 +20,7 @@ import httpx
 from dotenv import load_dotenv
 
 from services.diff_parser import ParsedDiff, parse_commit_files, parsed_diff_to_dict
+from core.llm import create_chat_completion
 
 load_dotenv()
 
@@ -28,7 +29,6 @@ logger = logging.getLogger(__name__)
 GITHUB_USERNAME = os.getenv("GITHUB_USERNAME", "")
 GITHUB_TOKEN    = os.getenv("GITHUB_TOKEN", "")
 
-_GROQ_MODEL  = "llama-3.3-70b-versatile"
 _GITHUB_API  = "https://api.github.com"
 
 
@@ -40,17 +40,7 @@ def _github_headers(pat: str = "") -> dict:
     return h
 
 
-def _get_groq():
-    """Lazy Groq client. Returns None if GROQ_API_KEY not set."""
-    api_key = os.getenv("GROQ_API_KEY", "")
-    if not api_key:
-        return None
-    try:
-        from groq import Groq
-        return Groq(api_key=api_key)
-    except Exception as exc:
-        logger.warning("Could not init Groq client: %s", exc)
-        return None
+
 
 
 # ─── Fetch a single commit's full diff ────────────────────────────────────────
@@ -83,8 +73,8 @@ def analyze_commit(commit_msg: str, diff: ParsedDiff, username: str) -> dict:
     Calls Groq to generate a semantic summary of a commit.
     Returns dict with semantic_summary, change_type, impact, patterns.
     """
-    groq = _get_groq()
-    if not groq:
+    api_key = os.getenv("GROQ_API_KEY", "")
+    if not api_key:
         return {
             "semantic_summary": commit_msg[:300],
             "change_type": diff.primary_change_type,
@@ -118,8 +108,7 @@ Return ONLY valid JSON (no markdown, no explanation):
 }}"""
 
     try:
-        resp = groq.chat.completions.create(
-            model=_GROQ_MODEL,
+        resp = create_chat_completion(
             messages=[{"role": "user", "content": prompt}],
             temperature=0.3,
             max_tokens=350,

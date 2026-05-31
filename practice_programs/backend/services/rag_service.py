@@ -22,30 +22,24 @@ import logging
 import os
 from collections.abc import Iterator
 
-from langchain_groq import ChatGroq
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 
 from services import vector_store
+from core.llm import get_chat_groq
 
 logger = logging.getLogger(__name__)
 
-_GROQ_MODEL = "llama-3.3-70b-versatile"
 _MAX_SOURCES = 6
 _MAX_CHARS_PER_SOURCE = 450
 _MAX_CONTEXT_CHARS = 2800
 
 
 def _get_llm():
-    api_key = os.getenv("GROQ_API_KEY", "")
-    if not api_key:
-        return None
     try:
-        return ChatGroq(
-            model=_GROQ_MODEL,
+        return get_chat_groq(
             temperature=0.3,
-            max_tokens=600,
-            api_key=api_key
+            max_tokens=600
         )
     except Exception as exc:
         logger.warning("LangChain ChatGroq init failed: %s", exc)

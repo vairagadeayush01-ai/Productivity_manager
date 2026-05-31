@@ -62,6 +62,7 @@ export default function Search() {
   // Auto-search on debounced input
   useEffect(() => {
     if (debouncedQuery.trim().length >= 2) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       runSearch(debouncedQuery, source);
     } else if (!debouncedQuery.trim()) {
       setResults([]);

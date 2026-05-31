@@ -160,6 +160,7 @@ async def fetch_today_submissions() -> dict:
 import json as _json
 import os as _os
 import re as _re
+from core.llm import create_chat_completion
 
 
 async def get_problem_description(slug: str) -> str:
@@ -214,17 +215,7 @@ async def analyze_solution(
             "summary": "Analysis unavailable — GROQ_API_KEY not set.",
         }
 
-    try:
-        from groq import Groq
-        groq = Groq(api_key=api_key)
-    except Exception:
-        return {
-            "ds_used": "", "pattern": "",
-            "time_complexity": "", "space_complexity": "",
-            "edge_cases_handled": [], "missed_edges": [],
-            "optimization_tip": "",
-            "summary": "Analysis unavailable — Groq client error.",
-        }
+
 
     tag_str = ", ".join(tags[:6]) if tags else "none"
     code_excerpt = solution_code[:2000] if solution_code else "(no code provided)"
@@ -252,8 +243,7 @@ Return ONLY valid JSON (no markdown, no explanation outside JSON):
 }}"""
 
     try:
-        resp = groq.chat.completions.create(
-            model="llama-3.3-70b-versatile",
+        resp = create_chat_completion(
             messages=[{"role": "user", "content": prompt}],
             temperature=0.3,
             max_tokens=500,

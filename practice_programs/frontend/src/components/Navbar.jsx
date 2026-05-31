@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
-  Brain,
   LayoutDashboard,
   Search,
   Gamepad2,
@@ -43,30 +42,47 @@ export default function Navbar() {
     <>
       <header className="navbar">
         <div className="navbar__inner">
-          {/* Brand */}
+
+          {/* ── Brand (left) ── */}
           <Link to="/" className="brand" onClick={closeMobile}>
-            <Brain color="var(--primary)" size={20} />
-            <span>Productivity Manager</span>
+            <svg width="22" height="22" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                <linearGradient id="navgrad" x1="0" y1="0" x2="48" y2="48" gradientUnits="userSpaceOnUse">
+                  <stop offset="0%" stopColor="#7c3aed"/>
+                  <stop offset="100%" stopColor="#3b82f6"/>
+                </linearGradient>
+              </defs>
+              <rect width="48" height="48" rx="12" fill="#0f1117"/>
+              <path d="M12 10 L12 38 L22 38 C31 38 36 32 36 24 C36 16 31 10 22 10 Z" stroke="url(#navgrad)" strokeWidth="2.5" fill="none"/>
+              <polyline points="10,30 20,22 28,26 38,14" stroke="url(#navgrad)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+              <polyline points="33,12 38,14 36,19" stroke="url(#navgrad)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+            </svg>
+            <span>DevTrack</span>
           </Link>
 
-          {/* Nav links */}
+          {/* ── Nav links (center) ── */}
           <nav className={`navbar__nav${mobileOpen ? ' navbar__nav--open' : ''}`} aria-label="Main">
-            {NAV_ITEMS.map(({ path, label, icon: Icon }) => (
-              <Link
-                key={path}
-                to={path}
-                className={`nav-link${location.pathname === path ? ' nav-link--active' : ''}`}
-                onClick={closeMobile}
-              >
-                <Icon size={15} aria-hidden />
-                <span>{label}</span>
-              </Link>
-            ))}
+            {NAV_ITEMS.map(({ path, label, icon: Icon }) => {
+              const isActive = path === '/'
+                ? location.pathname === '/'
+                : location.pathname.startsWith(path);
+              return (
+                <Link
+                  key={path}
+                  to={path}
+                  className={`nav-link${isActive ? ' nav-link--active' : ''}`}
+                  onClick={closeMobile}
+                >
+                  <span>{label}</span>
+                </Link>
+              );
+            })}
           </nav>
 
-          {/* Right actions */}
+          {/* ── Right actions ── */}
           <div className="navbar__actions">
-            {/* Add button */}
+
+            {/* + Add button */}
             <button
               type="button"
               className="btn-primary btn-primary--sm"
@@ -77,17 +93,7 @@ export default function Navbar() {
               <span className="navbar__add-label">Add</span>
             </button>
 
-            {/* User avatar — links to /profile */}
-            <Link
-              to="/profile"
-              className={`navbar__avatar${location.pathname === '/profile' ? ' navbar__avatar--active' : ''}`}
-              title={`Profile: ${user?.email}`}
-              aria-label="Your profile"
-            >
-              {initial}
-            </Link>
-
-            {/* Theme toggle — round, right of avatar */}
+            {/* Theme toggle */}
             <button
               type="button"
               className="theme-toggle-btn theme-toggle-btn--round"
@@ -97,6 +103,16 @@ export default function Navbar() {
             >
               {theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}
             </button>
+
+            {/* User avatar */}
+            <Link
+              to="/profile"
+              className={`navbar__avatar${location.pathname === '/profile' ? ' navbar__avatar--active' : ''}`}
+              title={`Profile: ${user?.email}`}
+              aria-label="Your profile"
+            >
+              {initial}
+            </Link>
 
             {/* Mobile burger */}
             <button

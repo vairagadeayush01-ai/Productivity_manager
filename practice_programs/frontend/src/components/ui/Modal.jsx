@@ -51,7 +51,7 @@ export default function Modal({
     [onClose]
   );
 
-  // ── Body scroll lock + focus trap setup ────────────────────────────────────
+  // ── Body scroll lock + focus trap setup (Runs only when isOpen changes) ──
   useEffect(() => {
     if (!isOpen) return;
 
@@ -80,16 +80,21 @@ export default function Modal({
       }
     }, 50);
 
-    // Listen for Escape
-    document.addEventListener('keydown', handleKeyDown);
-
     return () => {
       // Restore scroll
       document.body.style.overflow = prevOverflow;
       document.body.style.paddingRight = prevPaddingRight;
       document.body.classList.remove('modal-open');
-      document.removeEventListener('keydown', handleKeyDown);
       clearTimeout(focusTimer);
+    };
+  }, [isOpen]);
+
+  // ── Escape key listener ──
+  useEffect(() => {
+    if (!isOpen) return;
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
     };
   }, [isOpen, handleKeyDown]);
 

@@ -61,7 +61,7 @@ async def ingest_youtube(
         transcript = get_transcript(video_id)
     except ValueError as e:
         logger.warning("Transcript failed for %s: %s", req.url, e)
-        raise HTTPException(422, str(e))
+        transcript = f"Transcript unavailable. The video might be rate-limited or have no captions."
     title = await get_video_title(video_id)
     try:
         result = summarize_transcript(transcript, title)
@@ -220,9 +220,22 @@ async def ingest_webpage(
     current_user: User = Depends(get_current_user),
 ):
     try:
-        result = summarize_manual_log(f"Read article from {req.url}")
+        import httpx
+        from bs4 import BeautifulSoup
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(req.url, timeout=10.0)
+        soup = BeautifulSoup(resp.text, 'html.parser')
+        text_content = soup.get_text(separator=' ', strip=True)
+        # limit to first 10k chars for summarization
+        snippet = text_content[:10000]
+        result = summarize_manual_log(f"Read article from {req.url}. Content: {snippet}")
     except Exception as e:
-        raise HTTPException(502, f"Groq API error: {e}")
+        logger.warning(f"Webpage fetch/summarize failed: {e}")
+        try:
+            result = summarize_manual_log(f"Read article from {req.url}")
+        except:
+            result = {"summary": req.url, "topics": ["webpage"], "key_concepts": []}
+            
     summary = result.get("summary", req.url)
     return entry_store.save_entry(
         db, current_user.id, "webpage", summary[:80], req.url, req.url, result
@@ -231,6 +244,7 @@ async def ingest_webpage(
 
 class PasteRequest(BaseModel):
     text: str = Field(..., min_length=1)
+    title: str | None = None
 
 @router.post("/paste")
 @limiter.limit("20/minute")
@@ -245,8 +259,9 @@ async def ingest_paste(
     except Exception as e:
         raise HTTPException(502, f"Groq API error: {e}")
     summary = result.get("summary", req.text[:80])
+    entry_title = req.title.strip() if req.title else summary[:80]
     return entry_store.save_entry(
-        db, current_user.id, "paste", summary[:80], "", req.text[:2000], result
+        db, current_user.id, "paste", entry_title, "", req.text[:2000], result
     )
 
 

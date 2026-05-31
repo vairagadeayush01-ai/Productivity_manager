@@ -49,7 +49,7 @@ class TestSaveEntry:
             title="Test Note",
             source_url="",
             raw_content="Some content",
-            ai_result={"summary": "A test summary", "topics": ["testing"], "key_concepts": []},
+            summary_result={"summary": "A test summary", "topics": ["testing"], "key_concepts": []},
         )
         assert result["id"] is not None
         assert result["title"] == "Test Note"
@@ -64,7 +64,7 @@ class TestSaveEntry:
             title="Duplicate Video",
             source_url="https://youtube.com/watch?v=abc123",
             raw_content="transcript",
-            ai_result={"summary": "video summary", "topics": ["python"], "key_concepts": []},
+            summary_result={"summary": "video summary", "topics": ["python"], "key_concepts": []},
         )
         result1 = entry_store.save_entry(**kwargs)
         result2 = entry_store.save_entry(**kwargs)
@@ -79,7 +79,7 @@ class TestSaveEntry:
             title="Two Sum",
             source_url="https://leetcode.com/problems/two-sum",
             raw_content="Two pointers problem",
-            ai_result={
+            summary_result={
                 "summary": "Hash map approach",
                 "topics": ["arrays", "hash-map", "two-pointers"],
                 "key_concepts": [],
@@ -99,12 +99,12 @@ class TestSaveEntry:
         r1 = entry_store.save_entry(
             db, user_id=1, source_type="manual", title="User1 Note",
             source_url="", raw_content="content",
-            ai_result={"summary": "u1", "topics": [], "key_concepts": []},
+            summary_result={"summary": "u1", "topics": [], "key_concepts": []},
         )
         r2 = entry_store.save_entry(
             db, user_id=2, source_type="manual", title="User2 Note",
             source_url="", raw_content="content",
-            ai_result={"summary": "u2", "topics": [], "key_concepts": []},
+            summary_result={"summary": "u2", "topics": [], "key_concepts": []},
         )
         assert r1["id"] != r2["id"]
 

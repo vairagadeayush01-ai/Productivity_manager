@@ -18,7 +18,6 @@ const SOURCE_TABS = [
   { key: 'manual',   label: 'Manual',   icon: FileText    },
 ];
 
-const VIEWS = ['entries', 'diary'];
 const PAGE_SIZE = 10;
 
 function youtubeThumb(url) {
@@ -31,18 +30,15 @@ function youtubeThumb(url) {
 export default function History() {
   const navigate = useNavigate();
 
-  /* ── view tabs ── */
-  const [view,       setView]       = useState('entries');
-  const [sourceTab,  setSourceTab]  = useState(null);
   const [page,       setPage]       = useState(1);
   const [startDate,  setStartDate]  = useState('');
   const [endDate,    setEndDate]    = useState('');
   const [showFilter, setShowFilter] = useState(false);
+  const [sourceTab,  setSourceTab]  = useState(null);
 
   /* ── data ── */
   const [entries,   setEntries]   = useState([]);
   const [total,     setTotal]     = useState(0);
-  const [diaries,   setDiaries]   = useState([]);
   const [loading,   setLoading]   = useState(true);
   const [error,     setError]     = useState(null);
   const [selectedEntry, setSelectedEntry] = useState(null);
@@ -80,23 +76,10 @@ export default function History() {
     } finally { setLoading(false); }
   }, [page, sourceTab, startDate, endDate]);
 
-  /* ── load diaries ── */
-  const loadDiaries = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await api.getDiaries();
-      setDiaries(res.diaries || []);
-    } catch (err) {
-      console.error(err);
-      setError('Failed to load diary entries. Check your connection and try again.');
-    } finally { setLoading(false); }
-  }, []);
-
   useEffect(() => {
-    if (view === 'entries') loadEntries();
-    else loadDiaries();
-  }, [view, loadEntries, loadDiaries]);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadEntries();
+  }, [loadEntries]);
 
   const resetFilters = () => {
     setSourceTab(null);
@@ -128,48 +111,12 @@ export default function History() {
           <button
             type="button"
             className="btn-secondary btn-secondary--sm"
-            onClick={view === 'entries' ? loadEntries : loadDiaries}
+            onClick={loadEntries}
           >Retry</button>
         </div>
       )}
 
-      {/* ── View toggle ── */}
-      <div style={{
-        display: 'flex', gap: '4px',
-        background: 'var(--bg-surface-2)',
-        border: '1px solid var(--border)',
-        borderRadius: 'var(--radius-sm)',
-        padding: '4px',
-        marginBottom: 'var(--space-lg)',
-        width: 'fit-content',
-      }}>
-        {VIEWS.map(v => (
-          <button
-            key={v}
-            type="button"
-            onClick={() => { setView(v); setLoading(true); }}
-            style={{
-              padding: '6px 16px',
-              borderRadius: 'calc(var(--radius-sm) - 2px)',
-              border: 'none',
-              fontFamily: 'inherit',
-              fontSize: '0.8125rem',
-              fontWeight: 500,
-              cursor: 'pointer',
-              transition: 'all 0.15s',
-              background: view === v ? 'var(--bg-surface)' : 'transparent',
-              color: view === v ? 'var(--text-main)' : 'var(--text-muted)',
-              boxShadow: view === v ? 'var(--shadow-xs)' : 'none',
-            }}
-          >
-            {v === 'entries' ? 'Entries' : 'Diary'}
-          </button>
-        ))}
-      </div>
 
-      {/* ── ENTRIES VIEW ── */}
-      {view === 'entries' && (
-        <>
           {/* Source tabs + filter toggle */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-md)', flexWrap: 'wrap', gap: '8px' }}>
             <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
@@ -252,51 +199,65 @@ export default function History() {
                 {total} {total === 1 ? 'entry' : 'entries'}
               </p>
               <div className="entry-list">
-                {entries.map(entry => {
-                  return (
-                    <article 
-                      key={entry.id} 
-                      className="entry-card" 
-                      onClick={() => setSelectedEntry(entry)}
-                      style={{ cursor: 'pointer' }}
-                    >
-                      {entry.source_type === 'youtube' && (
-                        <div className="entry-card__thumb">
-                          {youtubeThumb(entry.source_url)
-                            ? <img src={youtubeThumb(entry.source_url)} alt="" loading="lazy" />
-                            : <Video size={24} style={{ margin: 'auto', display: 'block', paddingTop: '30%', color: 'var(--text-faint)' }} />
-                          }
-                        </div>
-                      )}
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                          <SourceBadge type={entry.source_type} />
-                          <span style={{ fontSize: '0.75rem', color: 'var(--text-faint)' }}>
-                            {new Date(entry.created_at || entry.date).toLocaleDateString()}
-                          </span>
-                        </div>
-                        <h3 className="entry-card__title">{entry.title}</h3>
-                        
-                        {entry.summary && (
-                          <p className="entry-card__summary" style={{ 
-                            display: '-webkit-box',
-                            WebkitLineClamp: '2',
-                            WebkitBoxOrient: 'vertical',
-                            overflow: 'hidden'
-                          }}>
-                            {entry.summary}
-                          </p>
-                        )}
+                {Object.entries(
+                  entries.reduce((acc, entry) => {
+                    const d = new Date(entry.created_at || entry.date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+                    if (!acc[d]) acc[d] = [];
+                    acc[d].push(entry);
+                    return acc;
+                  }, {})
+                ).map(([dateLabel, groupEntries]) => (
+                  <div key={dateLabel} style={{ marginBottom: '32px' }}>
+                    <h3 style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-main)', marginBottom: '16px', paddingBottom: '8px', borderBottom: '1px solid var(--border)' }}>
+                      {dateLabel}
+                    </h3>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                      {groupEntries.map(entry => (
+                        <article 
+                          key={entry.id} 
+                          className="entry-card" 
+                          onClick={() => setSelectedEntry(entry)}
+                          style={{ cursor: 'pointer' }}
+                        >
+                          {entry.source_type === 'youtube' && (
+                            <div className="entry-card__thumb">
+                              {youtubeThumb(entry.source_url)
+                                ? <img src={youtubeThumb(entry.source_url)} alt="" loading="lazy" />
+                                : <Video size={24} style={{ margin: 'auto', display: 'block', paddingTop: '30%', color: 'var(--text-faint)' }} />
+                              }
+                            </div>
+                          )}
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                              <SourceBadge type={entry.source_type} />
+                              <span style={{ fontSize: '0.75rem', color: 'var(--text-faint)' }}>
+                                {new Date(entry.created_at || entry.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                            </div>
+                            <h3 className="entry-card__title">{entry.title}</h3>
+                            
+                            {entry.summary && (
+                              <p className="entry-card__summary" style={{ 
+                                display: '-webkit-box',
+                                WebkitLineClamp: '2',
+                                WebkitBoxOrient: 'vertical',
+                                overflow: 'hidden'
+                              }}>
+                                {entry.summary}
+                              </p>
+                            )}
 
-                        <div className="topic-tags" style={{ marginTop: '12px' }}>
-                          {(entry.topics || []).map((t, i) => (
-                            <span key={i} className="topic-tag">{String(t).trim()}</span>
-                          ))}
-                        </div>
-                      </div>
-                    </article>
-                  );
-                })}
+                            <div className="topic-tags" style={{ marginTop: '12px' }}>
+                              {(entry.topics || []).map((t, i) => (
+                                <span key={i} className="topic-tag">{String(t).trim()}</span>
+                              ))}
+                            </div>
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  </div>
+                ))}
               </div>
 
               {/* Pagination */}
@@ -319,46 +280,7 @@ export default function History() {
               )}
             </>
           )}
-        </>
-      )}
 
-      {/* ── DIARY VIEW ── */}
-      {view === 'diary' && (
-        <>
-          {loading ? (
-            <div className="loading-block"><div className="spinner" /><p>Loading diary…</p></div>
-          ) : diaries.length === 0 ? (
-            <EmptyState
-              icon={BookOpen}
-              title="No diary entries yet"
-              description="Your AI-generated daily journal will appear here each evening."
-            />
-          ) : (
-            <div className="entry-list">
-              {diaries.map(diary => {
-                const label = new Date(diary.date).toLocaleDateString('en-US', {
-                  weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
-                });
-                return (
-                  <button
-                    key={diary.id}
-                    type="button"
-                    className="glass-card diary-row"
-                    style={{ width: '100%', border: 'none', textAlign: 'left', color: 'inherit', cursor: 'pointer' }}
-                    onClick={() => navigate(`/diary/${diary.date}`)}
-                  >
-                    <div>
-                      <div style={{ fontWeight: 600, fontSize: '0.9375rem', color: 'var(--text-main)' }}>{label}</div>
-                      <div style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', marginTop: '2px' }}>Open journal entry</div>
-                    </div>
-                    <ChevronRight size={18} color="var(--text-faint)" />
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </>
-      )}
     {/* ── MODAL — rendered via Portal into document.body to escape animation stacking context ── */}
     {selectedEntry && createPortal(
       <div
@@ -397,23 +319,24 @@ export default function History() {
             ))}
           </div>
 
-          <div style={{ display: 'flex', gap: '16px', borderTop: '1px solid var(--border)', paddingTop: '16px' }}>
-            {selectedEntry.source_url && (
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--border)', paddingTop: '16px', flexWrap: 'wrap', gap: '8px' }}>
+            {selectedEntry.source_url ? (
               <a 
                 href={selectedEntry.source_url} 
                 target="_blank" 
                 rel="noreferrer"
                 className="btn-secondary btn-secondary--sm"
               >
-                View original source ↗
+                View source ↗
               </a>
-            )}
+            ) : <span />}
             <button 
               type="button" 
               className="btn-secondary btn-secondary--sm" 
               onClick={e => handleDelete(e, selectedEntry.id)}
-              style={{ color: 'var(--danger)', borderColor: 'rgba(239,68,68,0.2)' }}
+              style={{ color: 'var(--danger)', borderColor: 'rgba(239,68,68,0.2)', marginLeft: 'auto' }}
             >
+              <X size={14} style={{ marginRight: '5px' }} />
               Delete entry
             </button>
           </div>

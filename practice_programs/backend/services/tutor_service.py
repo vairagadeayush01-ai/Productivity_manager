@@ -22,7 +22,7 @@ from typing import TypedDict, Annotated, Literal
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
 
-from langchain_groq import ChatGroq
+from core.llm import get_chat_groq
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, SystemMessage
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
@@ -32,22 +32,16 @@ from services import vector_store
 
 logger = logging.getLogger(__name__)
 
-_GROQ_MODEL     = "llama-3.3-70b-versatile"
 _SESSION_TTL_H  = 24
 _MAX_HISTORY    = 8       # turns kept in DB + injected into Groq
 _MAX_RAG_SOURCES = 4
 
 
 def _get_llm():
-    api_key = os.getenv("GROQ_API_KEY", "")
-    if not api_key:
-        return None
     try:
-        return ChatGroq(
-            model=_GROQ_MODEL,
+        return get_chat_groq(
             temperature=0.4,
-            max_tokens=700,
-            api_key=api_key
+            max_tokens=700
         )
     except Exception as exc:
         logger.warning("LangChain ChatGroq init failed: %s", exc)

@@ -27,7 +27,12 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-_default_origins = "http://localhost:5173,http://127.0.0.1:5173,https://www.youtube.com"
+_default_origins = (
+    "http://localhost:5173,http://127.0.0.1:5173,"
+    "http://localhost:5174,http://127.0.0.1:5174,"
+    "http://localhost:5175,http://127.0.0.1:5175,"
+    "https://www.youtube.com"
+)
 CORS_ORIGINS = [
     o.strip()
     for o in os.getenv("CORS_ORIGINS", _default_origins).split(",")
@@ -57,30 +62,24 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Content-Type", "Authorization"],
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 app.include_router(auth.router)
-app.include_router(activity_router)        # Phase 1.1 — offline sync batch endpoint
-app.include_router(github_router, prefix="/api/v1/github")
-app.include_router(leetcode_router, prefix="/api/v1/leetcode")
-app.include_router(chat_router, prefix="/api/v1/chat")
-app.include_router(tutor_router, prefix="/api/v1/tutor")
-app.include_router(calendar_router, prefix="/calendar")
+app.include_router(activity_router)
 app.include_router(ingest.router)
 app.include_router(search.router)
 app.include_router(reader.router)
 app.include_router(auto_fetch_router)
 app.include_router(quiz.router)
 app.include_router(report.router)
-app.include_router(diary.router)
-app.include_router(profile_router)         # Phase 2.1 — profile + connected accounts
-app.include_router(github_router)          # Phase 2.2 — GitHub diff intelligence
-app.include_router(leetcode_router)        # Phase 2.3 — LeetCode solution intelligence
-app.include_router(chat_router)            # Phase 3.1 — RAG chat
-app.include_router(tutor_router)           # Phase 3.3 — AI tutor with memory
-
+app.include_router(profile_router)
+app.include_router(github_router,   prefix="/api/v1/github")
+app.include_router(leetcode_router, prefix="/api/v1/leetcode")
+app.include_router(chat_router)
+app.include_router(tutor_router)
+app.include_router(calendar_router, prefix="/calendar")
 
 
 @app.on_event("startup")
@@ -95,4 +94,4 @@ async def startup():
 
 @app.get("/")
 async def root():
-    return {"message": "Learning Tracker is running!", "docs": "http://localhost:8000/docs", "auth": "/auth/register"}
+    return {"message": "Learning Tracker is running!", "docs": "/docs", "auth": "/auth/register"}

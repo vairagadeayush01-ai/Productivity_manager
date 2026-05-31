@@ -253,8 +253,7 @@ h1,h2,h3,h4,h5,h6 {
   align-items: center;
   gap: var(--space-md);
   height: var(--nav-height);
-  max-width: var(--content-max);
-  margin: 0 auto;
+  width: 100%;
   padding: 0 var(--space-xl);
 }
 
@@ -3075,3 +3074,26 @@ body.modal-open {
 /* Success-light text overrides for dark mode */
 [data-theme="dark"] .quiz-option--correct { color: var(--success); }
 [data-theme="dark"] .quiz-option--wrong   { color: var(--danger); }
+
+/* =========================================================================
+   DASHBOARD REDESIGN — two-column responsive layout
+   ========================================================================= */
+
+/* Collapse sidebar to below content on small screens */
+@media (max-width: 900px) {
+  .page .dashboard-two-col {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* Dashboard greeting glow enhancements */
+.dashboard-greeting {
+  padding-bottom: var(--space-md);
+}
+
+.dashboard-greeting__name {
+  background: linear-gradient(90deg, var(--text-main) 60%, var(--primary));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}

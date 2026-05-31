@@ -10,7 +10,7 @@ const TABS = [
   { id: 'paste',    label: 'Paste',    icon: FileText },
 ];
 
-export default function IngestModal({ isOpen, onClose }) {
+export default function IngestModal({ isOpen, onClose, onSuccess }) {
   const [activeTab, setActiveTab] = useState('youtube');
   const [value, setValue]         = useState('');
   const [extra, setExtra]         = useState('');
@@ -40,20 +40,34 @@ export default function IngestModal({ isOpen, onClose }) {
         res = await api.ingestLog(value);
         setSuccess('Note saved!');
       } else if (activeTab === 'webpage') {
-        res = await api.ingestWebpage?.(value) || await api.ingestLog(`Read article: ${value}`);
-        setSuccess('Article saved!');
+        res = await api.ingestWebpage(value);
+        setSuccess(`Article saved: ${res.title || value}`);
       } else if (activeTab === 'paste') {
-        res = await api.ingestPaste?.(value, extra) || await api.ingestLog(value);
+        res = await api.ingestPaste(value, extra || null);
         setSuccess('Text saved!');
       }
       setValue('');
       setExtra('');
+      // Notify parent to refresh data
+      if (typeof onSuccess === 'function') onSuccess(res);
     } catch (err) {
-      setError(err.response?.data?.detail || err.message || 'Failed — check backend logs.');
+      const detail = err.response?.data?.detail;
+      if (Array.isArray(detail)) {
+        setError(detail.map(d => d.msg).join('; '));
+      } else {
+        setError(detail || err.message || 'Failed — check backend logs.');
+      }
     } finally {
       setLoading(false);
     }
   };
+
+  const loadingLabel = {
+    youtube:  'Fetching & summarizing…',
+    note:     'Saving note…',
+    webpage:  'Fetching article…',
+    paste:    'Saving text…',
+  }[activeTab] || 'Saving…';
 
   return (
     <Modal
@@ -156,6 +170,7 @@ export default function IngestModal({ isOpen, onClose }) {
               onChange={e => setValue(e.target.value)}
               autoFocus
             />
+            <p className="ingest-modal__hint">Page content will be fetched and summarized</p>
           </div>
         )}
 
@@ -196,7 +211,7 @@ export default function IngestModal({ isOpen, onClose }) {
           disabled={loading || !value.trim()}
           style={{ width: '100%', justifyContent: 'center', marginTop: '4px' }}
         >
-          {loading ? 'Saving…' : 'Save'}
+          {loading ? loadingLabel : 'Save'}
         </button>
       </form>
     </Modal>

@@ -141,8 +141,8 @@ export const api = {
     const res = await client.post('/ingest/webpage', { url });
     return res.data;
   },
-  ingestPaste: async (text) => {
-    const res = await client.post('/ingest/paste', { text });
+  ingestPaste: async (text, title) => {
+    const res = await client.post('/ingest/paste', { text, title });
     return res.data;
   },
 
@@ -182,7 +182,7 @@ export const api = {
     return res.data;
   },
   syncGitHub: async () => {
-    const res = await client.post('/fetch/github');
+    const res = await client.get('/github/sync');
     return res.data;
   },
   syncLeetCode: async () => {

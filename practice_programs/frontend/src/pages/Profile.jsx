@@ -167,6 +167,10 @@ export default function Profile() {
   const [lcStatus, setLcStatus] = useState({ type: '', msg: '' });
   const [lcLoading, setLcLoading] = useState(false);
 
+  // Calendar form
+  const [calStatus, setCalStatus] = useState({ type: '', msg: '' });
+  const [calLoading, setCalLoading] = useState(false);
+
   // ── Fetch profile ──────────────────────────────────────────────────────────
   const fetchProfile = useCallback(async () => {
     setLoading(true);
@@ -184,6 +188,7 @@ export default function Profile() {
   }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchProfile();
     // Check for Google OAuth callback code
     const params = new URLSearchParams(window.location.search);
@@ -300,9 +305,6 @@ export default function Profile() {
   };
 
   // ── Calendar connect ───────────────────────────────────────────────────────
-  const [calStatus, setCalStatus] = useState({ type: '', msg: '' });
-  const [calLoading, setCalLoading] = useState(false);
-
   const connectCalendar = async () => {
     setCalLoading(true);
     setCalStatus({ type: '', msg: '' });

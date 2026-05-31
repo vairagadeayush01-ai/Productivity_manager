@@ -21,6 +21,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
+from sqlalchemy.pool import StaticPool
 
 load_dotenv()
 
@@ -31,6 +32,12 @@ USE_ALEMBIC = os.getenv("USE_ALEMBIC", "false").lower() in ("1", "true", "yes")
 
 
 def _build_engine():
+    if DATABASE_URL == "sqlite:///:memory:":
+        return create_engine(
+            DATABASE_URL,
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
     if DATABASE_URL.startswith("sqlite"):
         return create_engine(
             DATABASE_URL,

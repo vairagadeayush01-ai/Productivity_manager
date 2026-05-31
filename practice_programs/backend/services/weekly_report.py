@@ -37,11 +37,11 @@ import re
 from datetime import date, datetime, timedelta
 from typing import AsyncGenerator
 
-from groq import Groq
 from sqlalchemy.orm import Session
 
 from database import LearningEntry, QuizResult
 from services.stats_service import get_top_topics
+from core.llm import create_chat_completion
 
 logger = logging.getLogger(__name__)
 
@@ -51,21 +51,6 @@ try:
     load_dotenv()
 except ImportError:
     pass
-
-_groq_client: Groq | None = None
-
-
-def _get_groq() -> Groq:
-    global _groq_client
-    if _groq_client is None:
-        api_key = os.getenv("GROQ_API_KEY")
-        if not api_key:
-            raise RuntimeError("GROQ_API_KEY is not set.")
-        _groq_client = Groq(api_key=api_key)
-    return _groq_client
-
-
-MODEL = "llama-3.3-70b-versatile"
 
 # ─── Shared data-collection logic ─────────────────────────────────────────────
 
@@ -184,9 +169,7 @@ def generate_weekly_report(db: Session, user_id: int) -> dict:
 
     prompt = _build_prompt(stats, entries)
     try:
-        client = _get_groq()
-        response = client.chat.completions.create(
-            model=MODEL,
+        response = create_chat_completion(
             messages=[{"role": "user", "content": prompt}],
             temperature=0.4,
             max_tokens=900,
@@ -258,9 +241,7 @@ async def stream_weekly_report(db: Session, user_id: int) -> AsyncGenerator[str,
     emitted_sections: set[str] = set()
 
     try:
-        groq = _get_groq()
-        stream = groq.chat.completions.create(
-            model=MODEL,
+        stream = create_chat_completion(
             messages=[{"role": "user", "content": prompt}],
             temperature=0.4,
             max_tokens=900,

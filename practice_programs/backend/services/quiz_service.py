@@ -2,24 +2,17 @@ import os
 import logging
 from pydantic import BaseModel, Field
 
-from langchain_groq import ChatGroq
 from langchain_core.prompts import PromptTemplate
+from core.llm import get_chat_groq
 
 logger = logging.getLogger(__name__)
 
-_GROQ_MODEL = "llama-3.3-70b-versatile"
-
 
 def _get_llm():
-    api_key = os.getenv("GROQ_API_KEY", "")
-    if not api_key:
-        return None
     try:
-        return ChatGroq(
-            model=_GROQ_MODEL,
+        return get_chat_groq(
             temperature=0.8,
-            max_tokens=6000,
-            api_key=api_key
+            max_tokens=6000
         )
     except Exception as exc:
         logger.warning("LangChain ChatGroq init failed: %s", exc)

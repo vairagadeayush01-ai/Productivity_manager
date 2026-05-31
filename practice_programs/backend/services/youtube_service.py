@@ -4,7 +4,10 @@ youtube_service.py — YouTube transcript extraction and video title fetching (a
 
 import re
 import httpx
+import logging
 from youtube_transcript_api import YouTubeTranscriptApi, TranscriptsDisabled, NoTranscriptFound
+
+logger = logging.getLogger(__name__)
 
 
 def extract_video_id(url: str) -> str | None:
@@ -39,7 +42,11 @@ def get_transcript(video_id: str) -> str:
             for chunk in chunks
         )
     except Exception as e:
-        raise ValueError(f"Could not fetch transcript: {str(e)}")
+        error_msg = str(e)
+        if "429" in error_msg or "Too Many Requests" in error_msg:
+            logger.warning(f"YouTube rate limit (429) hit for video {video_id}.")
+            return ""
+        raise ValueError(f"Could not fetch transcript: {error_msg}")
 
 
 
