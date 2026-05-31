@@ -2,6 +2,7 @@ services:
   - type: web
     name: productivity-manager-backend
     env: python
+    rootDir: practice_programs/backend
     buildCommand: "pip install -r requirements.txt"
     startCommand: "uvicorn Main:app --host 0.0.0.0 --port $PORT"
     envVars:
