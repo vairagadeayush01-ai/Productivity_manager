@@ -18,7 +18,4 @@ services:
         generateValue: true
       - key: CORS_ORIGINS
         sync: false
-    disk:
-      name: data
-      mountPath: /data
-      sizeGB: 1
+    plan: free
