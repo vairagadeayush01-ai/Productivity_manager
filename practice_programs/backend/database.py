@@ -330,7 +330,7 @@ def _bootstrap_legacy_user() -> None:
 
 
 def init_db():
-    if USE_ALEMBIC or DATABASE_URL.startswith("postgresql"):
+    if USE_ALEMBIC:
         run_alembic_migrations()
     else:
         Base.metadata.create_all(bind=engine)
