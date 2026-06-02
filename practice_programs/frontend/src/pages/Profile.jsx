@@ -195,7 +195,7 @@ export default function Profile() {
     const code = params.get('code');
     if (code) {
       setCalLoading(true);
-      apiFetch('/calendar/callback', {
+      apiFetch(`/calendar/callback?frontend_url=${encodeURIComponent(window.location.origin)}`, {
         method: 'POST',
         body: JSON.stringify({ code })
       }).then(() => {
@@ -309,7 +309,7 @@ export default function Profile() {
     setCalLoading(true);
     setCalStatus({ type: '', msg: '' });
     try {
-      const data = await apiFetch('/calendar/auth');
+      const data = await apiFetch(`/calendar/auth?frontend_url=${encodeURIComponent(window.location.origin)}`);
       window.location.href = data.url;
     } catch (e) {
       setCalStatus({ type: 'error', msg: e.message });
