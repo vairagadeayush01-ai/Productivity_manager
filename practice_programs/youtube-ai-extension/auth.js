@@ -43,8 +43,8 @@ function syncTokens() {
       // No token in localStorage — user logged out
       // Only clear if we're actually on the dashboard port (not some other page)
       const isOnDashboard =
-        window.location.hostname === "localhost" &&
-        (window.location.port === "5173" || window.location.port === "3000");
+        window.location.hostname === "localhost" ||
+        window.location.hostname.includes("vercel.app");
 
       if (isOnDashboard && (storedAccess || storedRefresh)) {
         chrome.storage.local.remove([EXT_ACCESS_KEY, EXT_REFRESH_KEY], () => {
