@@ -1,6 +1,6 @@
 // ── Config ────────────────────────────────────────────────
 // Change this if your backend runs on a different port
-var BACKEND_URL = "http://localhost:8000";
+var BACKEND_URL = "https://productivity-manager-backend-v5ev.onrender.com";
 
 var EDU_CHANNELS = [
   // Global channels

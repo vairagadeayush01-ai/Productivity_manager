@@ -22,7 +22,7 @@
  * }
  */
 
-const BACKEND_URL = "http://localhost:8000";
+const BACKEND_URL = "https://productivity-manager-backend-v5ev.onrender.com";
 const SYNC_ENDPOINT = `${BACKEND_URL}/api/v1/activity/sync`;
 const REFRESH_ENDPOINT = `${BACKEND_URL}/api/v1/auth/refresh`;
 const ALARM_NAME = "antigravity-sync";
