@@ -266,7 +266,7 @@ practice_programs/
 ---
 
 ## ☯️ Live Ur=RL
--- Live URL - https://productivity-manager-topaz.vercel.app/history
+-- Live URL - https://productivity-manager-topaz.vercel.app
 
 ## 🤝 Contributing
 
