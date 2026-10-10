@@ -1,11 +1,11 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 
-const ThemeContext = createContext({ theme: 'light', toggleTheme: () => {} });
+const ThemeContext = createContext({ theme: 'dark', toggleTheme: () => {} });
 
 export function ThemeProvider({ children }) {
   const [theme, setTheme] = useState(() => {
-    // Read saved preference; default to 'light'
-    return localStorage.getItem('pm_theme') || 'light';
+    // Read saved preference; default to the black workspace theme
+    return localStorage.getItem('pm_theme') || 'dark';
   });
 
   // Apply theme attribute to <html> on mount and every change
