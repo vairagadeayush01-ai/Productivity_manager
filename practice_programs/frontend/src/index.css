@@ -3097,3 +3097,58 @@ body.modal-open {
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
+/* Refined black workspace theme and shared interaction states */
+[data-theme=dark] {
+  --bg-page: #050505;
+  --bg-surface: #111113;
+  --bg-surface-2: #19191d;
+  --bg-hover: #232329;
+  --border: rgba(255, 255, 255, 0.1);
+  --border-subtle: rgba(255, 255, 255, 0.06);
+  --border-highlight: rgba(255, 255, 255, 0.15);
+}
+
+[data-theme=dark] body,
+[data-theme=dark] .app-root-container {
+  background: #050505 !important;
+  background-image: none !important;
+}
+
+[data-theme=dark] .sidebar,
+[data-theme=dark] .topbar {
+  background: rgba(17, 17, 19, 0.96) !important;
+  border-color: var(--border);
+}
+
+.card,
+.glass-card,
+.nav-item,
+.btn {
+  transition: background-color 180ms ease, border-color 180ms ease, color 180ms ease, transform 180ms ease, box-shadow 180ms ease;
+}
+
+.card:hover,
+.glass-card:hover {
+  border-color: var(--border-highlight);
+  box-shadow: var(--shadow-md);
+}
+
+.nav-item:focus-visible,
+.btn:focus-visible,
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
